@@ -42,10 +42,13 @@
 | Pages 建置與 `verify-build.mjs /PDF-notes/` | 通過，PDF 資產、去背 worker、manifest、SW 及 CSP 靜態檢查通過 |
 | 本機根路徑建置 | 通過，`verify-build.mjs /` 通過；本機 dist 已回復根路徑 |
 | 敏感資料掃描 | 對候選原始碼／文件檢查常見私密金鑰、GitHub／Google／AWS token 模式，未發現符合項目；模擬測試 token 為明確假值 |
-| GitHub 推送／Pages | 以倉庫 Actions 與下方手機測試文件的實際發布紀錄為準 |
+| GitHub 推送／Pages | 已推送 `618f9a9` 至 main；[工作流程 35436181729](https://github.com/Light9999x/PDF-notes/actions/runs/35436181729) build／deploy 成功，Linux CI 安裝、audit、check、190 項測試與 Pages 建置通過 |
+| HTTPS 部署檢查 | 首頁／版本 0.8.1 JS／SW／圖示／去背 worker／抽樣 PDF CMap、字型、WASM 均 HTTP 200；manifest scope 正確，198 筆 PDF 資源；沒有執行網站 JS |
 | App／瀏覽器／真機／真實 Drive | 未啟動、未測；亦未執行 `test:e2e`、`test:server` |
 
 GitHub Actions 在 main 的 App 變更時執行 npm ci、audit、check、test、build、靜態路徑驗證，再上傳 `app/dist` 部署。PR 只有建置測試；部署 job 才有 pages:write／id-token:write，checkout 不保留憑證。官方 Actions 固定 commit SHA，未加入第三方部署服務或 PAT secret。
+
+程式發布 commit message：`feat: publish PDFnote 0.8.1 with security hardening and mobile PWA preview`。後續只補寫部署結果的文件提交使用 `[skip ci]`，不重複部署相同程式。
 
 ## 查核參考
 

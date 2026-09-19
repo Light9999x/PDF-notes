@@ -5,7 +5,8 @@ App 0.8.1 是既有 0.8.0 的資安與部署修補；v009 前五項 UI 尚未實
 - 原始碼：[Light9999x/PDF-notes](https://github.com/Light9999x/PDF-notes)
 - 手機測試網址：[頁間 PDFnote](https://light9999x.github.io/PDF-notes/)
 - 部署紀錄：[GitHub Actions](https://github.com/Light9999x/PDF-notes/actions/workflows/pages.yml)
-- 發布狀態：準備發布，待工作流程成功及 HTTPS 回應確認後更新。
+- 發布狀態：2026-09-19 已成功部署 App 0.8.1；[工作流程 35436181729](https://github.com/Light9999x/PDF-notes/actions/runs/35436181729) 的 build／deploy 皆成功。發布程式 commit：`618f9a98e0013e002b43bf5dc168f54df1a4d25f`。
+- HTTP 已確認：首頁、App JS（含 v0.8.1）、Service Worker、安裝圖示、去背 worker、抽樣 CMap／標準字型／WASM 皆 200；manifest scope／start_url 均為 `/PDF-notes/`，PDF 資源清單共 198 筆。這是部署檢查，未開啟 App 或執行手機操作。
 
 ## 開始測試
 
