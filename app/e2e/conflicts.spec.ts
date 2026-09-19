@@ -1,0 +1,21 @@
+import { exportAction } from './ui-helpers';
+import {test,expect} from '@playwright/test';
+import {PDFDocument} from 'pdf-lib';
+import {addAsset,edit,merge,META,type Annotation,type NoteDocument} from '../src/core/model';
+import {pack,unpack} from '../src/core/archive';
+import fs from 'node:fs/promises';
+test('conflicts survive offline archives, allow preview and explicit resolution',async({page,context})=>{
+  const pdf=await PDFDocument.create();pdf.addPage([500,700]);const asset=await addAsset(await pdf.save(),'application/pdf');
+  let doc:NoteDocument={format:1,id:crypto.randomUUID(),originalName:'conflict.pdf',originalHash:asset.hash,pdfHash:asset.hash,pageCount:1,created:new Date().toISOString(),operations:[],assets:{[asset.hash]:asset}};
+  doc=edit(doc,META,{kind:'document',name:'衝突驗收'},'origin');
+  const value:Annotation={kind:'text',page:1,x:50,y:70,width:300,height:100,text:'初始版本',fontSize:24,color:'#234234',weight:1,opacity:1};
+  doc=edit(doc,'object',value,'origin');const conflict=merge(edit(doc,'object',{...value,text:'Windows 修改內容'},'Windows'),edit(doc,'object',null,'Android'));
+  await page.goto('/');await page.locator('input[type=file]').first().setInputFiles({name:'conflict.pdfnote',mimeType:'application/octet-stream',buffer:Buffer.from(pack(conflict))});await expect(page.getByLabel('註記畫布',{exact:true})).toBeVisible();
+  await exportAction(page,'匯出 PDF');await expect(page.getByRole('alert')).toContainText('請先處理此文件的衝突');await page.getByLabel('關閉錯誤').click();
+  const download=page.waitForEvent('download');await exportAction(page,'工作存檔');const output=await download;const restored=await unpack(new Uint8Array(await fs.readFile((await output.path())!)));expect(restored.operations).toHaveLength(conflict.operations.length);
+  await page.getByRole('button',{name:'返回文件庫'}).click();await page.getByRole('button',{name:/衝突管理/}).click();await page.getByRole('button',{name:/衝突驗收/}).click();await page.getByRole('button',{name:/版本 .*已刪除/}).click();await expect(page.getByRole('heading',{name:'已刪除',exact:true})).toBeVisible();
+  await page.screenshot({path:'test-results/conflict-delete-preview.png',fullPage:true});
+  await page.getByRole('button',{name:'我的文件',exact:true}).click();await page.getByRole('button',{name:/衝突管理/}).click();await expect(page.getByText('1 個待處理物件')).toBeVisible();
+  await page.getByRole('button',{name:/衝突驗收/}).click();await page.getByRole('button',{name:/版本 .*已刪除/}).click();await page.getByRole('button',{name:'保留此版本',exact:true}).click();await expect(page.getByRole('heading',{name:'目前沒有待處理的衝突'})).toBeVisible();
+  await page.getByRole('button',{name:'我的文件',exact:true}).click();await page.getByRole('button',{name:'開啟 衝突驗收',exact:true}).click();await expect(page.locator('.reader-footer')).toContainText('0 個物件');
+});

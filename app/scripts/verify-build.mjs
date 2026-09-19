@@ -1,0 +1,20 @@
+// Static checks only. This script never starts a web server or browser.
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const base=process.argv[2]||'/';
+const html=await fs.readFile('dist/index.html','utf8');
+const manifest=JSON.parse(await fs.readFile('dist/manifest.webmanifest','utf8'));
+assert.equal(manifest.start_url,base);assert.equal(manifest.scope,base);
+assert.ok(manifest.icons.every(icon=>icon.src.startsWith(base)));
+assert.ok(html.includes('Content-Security-Policy'));
+assert.ok(!html.includes("script-src 'self' 'unsafe-inline'"));
+assert.ok(html.includes(`src="${base}assets/`));
+const files=await fs.readdir('dist/assets');
+const app=await fs.readFile('dist/assets/'+files.find(f=>/^index-.*\.js$/.test(f)),'utf8');
+assert.ok(app.includes(base+'pdfjs/cmaps/'));
+assert.ok(app.includes(base+'pdfjs/standard_fonts/'));
+assert.ok(app.includes(base+'pdfjs/wasm/'));
+assert.ok(app.includes(base+'sw.js'));
+const sw=await fs.readFile('dist/sw.js','utf8');
+assert.ok(sw.includes('index.html'));
+console.log('Static build paths, manifest, CSP and service worker passed for',base);
