@@ -398,8 +398,8 @@ details[open]>summary::before { content: '−'; }
 .gallery-item { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .gallery-item .action-menu { margin: 4px; }
 .gallery-item .action-menu summary { min-height: 44px; }
-.gallery-item:has(details[open]) { grid-column: 1 / -1; }
-.gallery-item .card-menu { position: static; width: 100%; box-shadow: none; }
+
+
 .gallery-thumb, .cutout-surface { background-color: #fff; background-image: conic-gradient(#dfe3df 25%,transparent 0 50%,#dfe3df 0 75%,transparent 0); background-size: 20px 20px; }
 .cutout-dialog { width: min(1000px,calc(100% - 24px)); }
 .cutout-tools, .cutout-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -429,3 +429,23 @@ details[open]>summary::before { content: '−'; }
   .editor-body:has(.context-panel.narrow.expanded)>.panel-toggle { transform: translateX(var(--mobile-panel-width)); }
   .editor-body:has(.context-panel.dragging)>.panel-toggle { transform: none; }
 }
+
+/* v009: overlay menus never participate in the card or gallery layout. */
+.editor-body { background: var(--reader-bg); }
+.menu-trigger, .disclosure-trigger { min-height: 44px; }
+.floating-menu { position: fixed; inset: auto; margin: 0; z-index: 1000; width: 280px; max-width: calc(100vw - 24px); overflow: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
+.floating-menu:popover-open { display: block; }
+.floating-menu button { width: 100%; min-height: 44px; white-space: normal; text-align: left; }
+.layer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0; }
+.layer-actions button { min-height: 44px; }
+.disclosure-trigger { width: 100%; text-align: left; }
+[hidden] { display: none!important; }
+@keyframes menu-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media(prefers-reduced-motion:reduce) { .floating-menu { animation: none; } }
+
+.context-panel { overflow: clip; }
+@media(max-width:600px) { .context-panel.narrow { overflow: visible; } }
+
+.floating-menu { --menu-safe-top: env(safe-area-inset-top,0px); --menu-safe-bottom: env(safe-area-inset-bottom,0px); --menu-safe-left: env(safe-area-inset-left,0px); --menu-safe-right: env(safe-area-inset-right,0px); }
+.editor-body>.panel-toggle { transition: transform 180ms ease-out; }
+@media(max-width:600px) { .editor-body[data-panel-open=false]>.panel-toggle { transform: none; } }

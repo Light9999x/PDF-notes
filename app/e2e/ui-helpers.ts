@@ -12,7 +12,7 @@ export async function folders(page:Page){
 }
 export async function folderMenu(page:Page,name:string){
   await folders(page);const summary=page.getByLabel('管理資料夾 '+name,{exact:true});
-  if(!await summary.evaluate(n=>n.parentElement?.hasAttribute('open')))await summary.click();
+  if(await summary.getAttribute('aria-expanded')!=='true')await summary.click();
 }
 
 export async function selectObject(page:Page,selector='[data-object]'){

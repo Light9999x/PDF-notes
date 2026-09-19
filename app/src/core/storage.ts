@@ -2,7 +2,7 @@ import { assertExpected } from './batch';
 import { openDB } from 'idb';
 import { heads, merge, type EditRequest, type NoteDocument } from './model';
 import { canMoveFolder, folderParent, folders, parentKey, cleanFolderName, emptyLibrary, folderKey, libraryEdit, libraryHeads, memberKey, mergeLibrary, validateLibrary, type LibraryState } from './library';
-const db = openDB('pdfnote-v1',6,{upgrade(db){
+const db = openDB('pdfnote-v1',7,{upgrade(db){
   if(!db.objectStoreNames.contains('documents'))db.createObjectStore('documents',{keyPath:'id'});
   if(!db.objectStoreNames.contains('settings'))db.createObjectStore('settings');
   if(!db.objectStoreNames.contains('assets'))db.createObjectStore('assets');

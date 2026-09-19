@@ -1,3 +1,4 @@
+import { compareLayers, layerChanges, layerLabels, nextLayer, type LayerAction } from '../core/layers';
 import { ImageCutout } from './ImageCutout';
 import { clickSelection } from '../core/click-selection';
 import { galleryChange, galleryHashes, type GalleryChange } from '../core/gallery';
@@ -12,7 +13,7 @@ import { ImageGallery, ImageDropPreview } from './ImageGallery';
 import { usePdfSearch } from './usePdfSearch';
 import { resizeGroup, rotateGroup, selectionFrame, uprightAt, uprightTextAt, visibleAngle, type Handle } from '../core/manipulation';
 import { EditorToolbar, type Tool } from './EditorToolbar';
-import { Button, Dialog, useMedia } from './ui';
+import { Button, Dialog, useMedia, useSlide } from './ui';
 import { editorKeyAction } from '../core/ui-policy';
 import { useEffect, useRef, useState } from 'react';
 import { addAsset, heads, nameOf, objects, uid, type EditRequest, type Annotation, type NoteDocument, type Point, type Value } from '../core/model';
@@ -44,6 +45,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const scroll=useRef<HTMLDivElement>(null),panelContent=useRef<HTMLDivElement>(null);
   const deferredView=useRef<(()=>void)|undefined>(undefined),scrollTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const panelVisible=panelOpen&&!(narrow&&!!placing);
+  const panelPresent=useSlide(panelVisible,panelContent,'x');
   const manipulating=tool==='select'||tool==='image';
   const gesture=useRef<{start:Point;rect?:{left:number;top:number;width:number;height:number};points?:Point[];straight?:StraightStroke;pointer:number;page:number;rotate?:boolean;resize?:Handle;frame?:Annotation;delta?:number;lastClient?:Point;erasing?:Map<string,History>;selecting?:'box'|'lasso';selectionPoints?:Point[];dragged?:boolean;clientStart?:Point;group?:SelectedObject[];beforeSelection?:string[];clickTarget?:SelectedObject;shift?:boolean}|undefined>(undefined);
   const liveDraft=useRef<Annotation|undefined>(undefined);const lastLocalOperations=useRef(new Set<string>());const currentDoc=useRef(doc);currentDoc.current=doc;
@@ -77,7 +79,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   function goPage(n:number){if(textRef.current||gesture.current){deferredView.current=()=>goPage(n);return;}pendingAnchor.current={page:n,x:0,y:0};restoring.current=true;setPage(n);setGeometryRevision(v=>v+1);requestAnimationFrame(()=>restoreRef.current());}
   function changeView(action:()=>void){if(textRef.current||gesture.current){deferredView.current=()=>changeView(action);return;}remember();restoring.current=true;action();setGeometryRevision(v=>v+1);}
   useEffect(()=>{const root=scroll.current;if(!root)return;const wheel=(e:WheelEvent)=>{if(layout!=='horizontal'||e.ctrlKey||e.metaKey)return;e.preventDefault();const amount=e.deltaMode===1?20:e.deltaMode===2?root.clientWidth:1;root.scrollLeft+=(Math.abs(e.deltaX)>0?e.deltaX:e.deltaY)*amount;};root.addEventListener('wheel',wheel,{passive:false});return ()=>root.removeEventListener('wheel',wheel);},[layout]);
-  const effective=editableObjects(doc).sort((a,b)=>a.id.localeCompare(b.id));
+  const effective=editableObjects(doc).sort(compareLayers);
   const selection=effective.filter(o=>selected.includes(o.id));
   const selectionKey=selection.map(o=>o.id+':'+o.head).join('|');
   const draftVersion=useRef(selectionKey),applyingProperties=useRef(false);
@@ -102,7 +104,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   async function deleteSelection(){const snapshot=selection;await commitGroup(selectionChanges(snapshot,()=>null));setSelected([]);}
   function fit(){
     const root=scroll.current;if(!root||!view||loading||gesture.current||textRef.current||imageDragging)return;
-    const cover=narrow&&panelVisible?Math.min(root.clientWidth,panelContent.current?.getBoundingClientRect().width||0):0;
+    const cover=narrow&&panelPresent?Math.min(root.clientWidth,panelContent.current?.getBoundingClientRect().width||0):0;
     const next={...readerSpace(root.clientWidth,root.clientHeight,cover),cover};
     if(!next.width||!next.height)return;
     setSpace(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
@@ -114,10 +116,12 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const restoreRef=useRef(restore);restoreRef.current=restore;
   const fitRef=useRef(fit);fitRef.current=fit;
   useEffect(()=>{const root=scroll.current;if(!root)return;let frame=0;const observer=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{fitRef.current();});});observer.observe(root);return ()=>{observer.disconnect();cancelAnimationFrame(frame);};},[]);
-  useEffect(()=>{if(!gesture.current&&!textRef.current&&deferredView.current){const action=deferredView.current;deferredView.current=undefined;action();return;}fitRef.current();},[geometryRevision,zoomMode,page,views,loading,panelVisible,narrow,imageDragging,textDraft?.id]);
+  useEffect(()=>{if(!gesture.current&&!textRef.current&&deferredView.current){const action=deferredView.current;deferredView.current=undefined;action();return;}fitRef.current();},[geometryRevision,zoomMode,page,views,loading,panelVisible,panelPresent,narrow,imageDragging,textDraft?.id]);
   function scrolled(){if(restoring.current)return;clearTimeout(scrollTimer.current);scrollTimer.current=setTimeout(remember,zoomMode==='page'?180:60);}
   async function commitGroup(changes:EditRequest[],assets?:NoteDocument['assets'],gallery?:GalleryChange[]){
-    if(!changes.length&&!assets&&!gallery?.length)return;if(workingRef.current)throw new Error('正在儲存，請稍候。');workingRef.current=true;setWorking(true);
+    if(!changes.length&&!assets&&!gallery?.length)return;if(workingRef.current)throw new Error('正在儲存，請稍候。');
+    changes=changes.map(c=>c.value&&c.value.kind!=='document'&&!heads(currentDoc.current,c.id).length?{...c,value:{...c.value,layer:nextLayer(currentDoc.current,c.value.page)}}:c);
+    workingRef.current=true;setWorking(true);
     try{const entries=changes.map(c=>({id:c.id,before:heads(currentDoc.current,c.id)[0]?.value??null,after:c.value,head:''}));const result=await onEditBatch(changes,assets,gallery);currentDoc.current=result;lastLocalOperations.current=new Set(result.operations.map(o=>o.id));
       if(entries.length)setUndo(h=>[...h,entries.map(e=>({...e,head:heads(result,e.id)[0].id}))]);if(entries.length)setRedo([]);
     }finally{workingRef.current=false;setWorking(false);}
@@ -229,7 +233,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     textSaving.current=task;try{return await task;}finally{textSaving.current=undefined;}
   }
   function openText(id:string|undefined,number:number,p:Point){
-    const object=[...editableObjects(currentDoc.current)].sort((a,b)=>a.id.localeCompare(b.id)).reverse().find(o=>o.value.kind==='text'&&o.value.page===number&&(id?o.id===id:hitAnnotation(o.value,p,0)));
+    const object=[...editableObjects(currentDoc.current)].sort(compareLayers).reverse().find(o=>o.value.kind==='text'&&o.value.page===number&&(id?o.id===id:hitAnnotation(o.value,p,0)));
     if(id&&!object){setSearchStatus('文字版本已改變，請重新選取。');return;}
     if(!object&&objects(currentDoc.current).some(o=>o.versions.length>1&&o.versions.some(h=>h.value?.kind==='text'&&h.value.page===number&&hitAnnotation(h.value,p)))){setSearchStatus('文字有衝突，請先處理版本。');return;}
     const value=object?.value||uprightTextAt(p,views[number-1].matrix,{kind:'text',page:number,x:p.x,y:p.y,width:240,height:140,writingMode:'horizontal-tb',fontSize:18,text:'',color,weight:1,opacity:1});
@@ -271,6 +275,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   }
   useEffect(()=>{const visible=galleryHashes(doc);if(placing&&!visible.includes(placing)||draggedImage.current&&!visible.includes(draggedImage.current)){placementEpoch.current++;draggedImage.current=undefined;setPlacing(undefined);setLanding(undefined);setImageDragging(false);}},[doc.galleryOps,doc.gallery,placing]);
   function changeTool(next:Tool){confirmAction(()=>{const apply=()=>{placementEpoch.current++;cancelGesture();setPlacing(undefined);setLanding(undefined);setImageDragging(false);setTool(next);setPanel(next==='image'?'images':'properties');if(next==='image')setPanelOpen(true);};if(textRef.current)void finishText().then(ok=>{if(ok)apply();});else apply();});}
+  async function changeLayer(action:LayerAction){await commitGroup(layerChanges(currentDoc.current,selection,action));}
   function gestureFrame(group:SelectedObject[],rotating:boolean){const f=selectionFrame(group);if(!rotating||group.length===1)return f;rotationPivot.current ||= {x:f.x+f.width/2,y:f.y+f.height/2};return {...f,x:rotationPivot.current.x-f.width/2,y:rotationPivot.current.y-f.height/2};}
   async function turnSelection(angle:number){if(!selection.length||workingRef.current||!Number.isFinite(angle))return;angle=((angle%360)+360)%360;const delta=selection.length===1?angle-visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):angle-groupAngle;if(Math.abs(delta)<.00001)return;const values=rotateGroup(selection,selection.length===1?angle-visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):angle-groupAngle,gestureFrame(selection,true));await commitGroup(selection.map((o,i)=>({id:o.id,value:values[i],expected:[o.head]})));setGroupAngle(angle);}
   return <section className="editor">
@@ -281,12 +286,13 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
       zoomMode={zoomMode} onZoom={n=>changeView(()=>{setZoomMode('manual');setZoom(n);})} onFit={()=>changeView(()=>setZoomMode('width'))} onFitPage={()=>changeView(()=>setZoomMode('page'))} onRotate={()=>changeView(()=>setRotation(v=>(v+90)%360))}
       layout={layout} onLayout={value=>changeView(()=>setLayout(value))} query={query} onQuery={setQuery} onSearch={()=>search.step(1)} onPrevious={()=>search.step(-1)} searchSummary={search.summary}/>
     {searchStatus&&<div className="search-status" role="status">{searchStatus}<button onClick={()=>setSearchStatus('')}>關閉</button></div>}
-    <div className={'editor-body'+(!panelVisible?' panel-collapsed':'')}>    <aside className={'context-panel properties'+(narrow?' narrow':'')+(panelVisible?' expanded':'')+(imageDragging?' dragging':'')} aria-label={panel==='images'?'圖片庫':'物件屬性'}>
+    <div data-panel-open={panelVisible} className={'editor-body'+(!panelPresent?' panel-collapsed':'')}>    <aside className={'context-panel properties'+(narrow?' narrow':'')+(panelPresent?' expanded':'')+(imageDragging?' dragging':'')} aria-label={panel==='images'?'圖片庫':'物件屬性'}>
 
-      <div id="context-content" ref={panelContent} className="context-content" hidden={!panelVisible} inert={!panelVisible}><header><h2>{panel==='images'?'圖片':'物件屬性'}</h2>{panel==='images'&&<button onClick={()=>changeTool('select')}>屬性</button>}</header>
-      <div hidden={panel!=='images'}><ImageGallery doc={doc} busy={working} onImport={insertImage} onRemove={hash=>changeMembership(hash,false)} onRestore={hash=>changeMembership(hash,true)} onCutout={hash=>openCutout(hash)} onPick={hash=>{confirmAction(()=>{setPlacing(hash);});}} onDrag={imageDrag}/></div>
+      <div id="context-content" ref={panelContent} className="context-content" hidden={!panelPresent} inert={!panelVisible}><header><h2>{panel==='images'?'圖片':'物件屬性'}</h2>{panel==='images'&&<button onClick={()=>changeTool('select')}>屬性</button>}</header>
+      <div hidden={panel!=='images'}><ImageGallery doc={doc} busy={working} onImport={insertImage} onRemove={hash=>changeMembership(hash,false)} onCutout={hash=>openCutout(hash)} onPick={hash=>{confirmAction(()=>{setPlacing(hash);});}} onDrag={imageDrag}/></div>
       <div hidden={panel!=='properties'}>{textDraft?<><p>正在頁面編輯文字</p><button data-text-action disabled={working} onClick={()=>void finishText()}>完成文字</button><button data-text-action disabled={working} onClick={()=>updateText(undefined)}>取消編輯</button></>:<>
       {!!selection.length&&<div className="angle-control">{gesture.current?.rotate&&groupDraft.size>0&&<output aria-label="旋轉預覽">{Math.round((selection.length===1?visibleAngle(groupDraft.values().next().value!,views[selection[0].value.page-1].matrix):groupAngle+(gesture.current.delta||0))*10)/10}°</output>}<label>{selection.length>1?'相對選取起點角度':'旋轉角度'}<input disabled={working||propertiesDirty} aria-label="物件旋轉角度" type="text" inputMode="decimal" key={selectionKey+groupAngle} defaultValue={Math.round((selection.length===1&&views[selection[0].value.page-1]?visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):groupAngle)*10)/10} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} onBlur={e=>{const n=Number(e.target.value);if(e.target.value.trim()&&Number.isFinite(n))void turnSelection(n).catch(onError);}}/></label><button disabled={working||propertiesDirty} onClick={()=>void turnSelection(0).catch(onError)}>{selection.length>1?'回復群組起始方向':'水平 0°'}</button></div>}
+      {!!selection.length&&<div className="layer-actions" role="group" aria-label="物件圖層">{(Object.keys(layerLabels) as LayerAction[]).map(action=><button key={action} disabled={working||!layerChanges(doc,selection,action).length} onClick={()=>confirmAction(()=>void changeLayer(action).catch(onError))}>{layerLabels[action]}</button>)}</div>}
       {selection.length===1&&selection[0].value.kind==='image'&&<button disabled={working} onClick={()=>openCutout(selection[0].value.asset!,selection[0])}>去背此圖片</button>}
       <PropertiesPanel key={selectionKey+':'+panelRevision} selection={selection} working={working} onDirty={setPropertiesDirty} onCommit={changes=>{applyingProperties.current=true;return commitGroup(changes).catch(error=>{applyingProperties.current=false;throw error;});}} onDelete={()=>confirmAction(()=>void deleteSelection().catch(onError))} onError={onError}/></>}
       </div></div>

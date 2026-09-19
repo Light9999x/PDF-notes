@@ -4,7 +4,7 @@
 
 **[開啟 PDFnote](https://light9999x.github.io/PDF-notes/)** · [詳細操作與本機安裝](app/README.md) · [回報問題](https://github.com/Light9999x/PDF-notes/issues)
 
-目前版本 **0.8.1，測試中**。透過瀏覽器使用，也能安裝成獨立視窗的 App（PWA）；目前沒有 APK 或 EXE 安裝檔。使用本機筆記功能不需要 Google 帳號。
+目前原始碼版本 **0.9.0，測試中**；本輪尚未部署到上方網站。透過瀏覽器使用，也能安裝成獨立視窗的 App（PWA）；目前沒有 APK 或 EXE 安裝檔。使用本機筆記功能不需要 Google 帳號。
 
 ## 第一次使用：照這五步開始
 
@@ -87,11 +87,11 @@ Google Drive 同步是選用功能，需要先設定自己的 Google OAuth 用�
 
 程式已提供 PDF／圖片匯入、資料夾、四類註記、手動圖片去背、搜尋、離線保存與兩種匯出。手動去背不是 AI 自動去背；新增註記文字匯出成 PDF 後不具有可搜尋文字層。筆記與存檔目前沒有 App 端加密。
 
-0.8.1 已通過 190 項單元測試、建置與部署檢查；Windows／Galaxy S24+ 的實際安裝操作、觸控筆及真實 Google Drive 雙端同步仍待驗收。詳見 [手機測試指南](app/docs/MOBILE-TESTING.md) 與 [資安檢查報告](app/docs/SECURITY-REVIEW-0081.md)。
+0.9.0 已通過 210 項單元測試；本輪未啟動 App 或更新線上部署，檢查結果見 [v009 驗證紀錄](app/docs/VALIDATION-V009.md)。Windows／Galaxy S24+ 的實際安裝操作、觸控筆及真實 Google Drive 雙端同步仍待驗收。詳見 [手機測試指南](app/docs/MOBILE-TESTING.md) 與 [資安檢查報告](app/docs/SECURITY-REVIEW-0081.md)。
 
 ## 開發與後續規劃
 
 - [App README](app/README.md)：完整操作、本機執行、更新與開發檢查。
 - [架構](app/docs/ARCHITECTURE.md)／[依賴與授權](app/docs/DEPENDENCIES.md)：技術資料。
 - [Prompt 與 changelog](prompts/CHANGELOG.md)：歷次規劃及設計／驗收文件入口；規劃不等於已實作。
-- [v009 規劃](prompts/v009_選單面板動畫與物件圖層_開發Prompt.md)：圖片庫精簡、選單覆蓋、面板背景、物件前後圖層與動畫尚未實作。
+- [v009 規劃](prompts/v009_選單面板動畫與物件圖層_開發Prompt.md)：圖片庫精簡、選單覆蓋、面板背景、物件前後圖層與動畫已實作；瀏覽器／真機待驗收。

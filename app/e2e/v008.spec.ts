@@ -48,7 +48,7 @@ test('left panel external control remains outside content and releases width',as
 });
 
 test('gallery remove survives reload, preserves instances and same-bytes import restores membership',async({page})=>{
-  const {asset,png}=await open(page);await page.getByRole('button',{name:'插入圖片',exact:true}).click();await page.locator('.gallery-item summary').click();await page.getByRole('button',{name:'從圖片庫移除',exact:true}).click();await expect(page.locator('.gallery-thumb')).toHaveCount(0);const removed=await saved(page);expect(galleryHashes(removed)).toEqual([]);expect(heads(removed,'image')[0].value).toMatchObject({asset:asset.hash});expect(removed.assets[asset.hash].bytes).toEqual(asset.bytes);
+  const {asset,png}=await open(page);await page.getByRole('button',{name:'插入圖片',exact:true}).click();await page.locator('.gallery-item .menu-trigger').click();await page.getByRole('button',{name:'從圖片庫移除',exact:true}).click();await expect(page.locator('.gallery-thumb')).toHaveCount(0);const removed=await saved(page);expect(galleryHashes(removed)).toEqual([]);expect(heads(removed,'image')[0].value).toMatchObject({asset:asset.hash});expect(removed.assets[asset.hash].bytes).toEqual(asset.bytes);
   await page.reload();await page.getByRole('button',{name:'開啟 v008',exact:true}).click();await page.getByRole('button',{name:'插入圖片',exact:true}).click();await expect(page.locator('.gallery-thumb')).toHaveCount(0);await page.locator('.editor input[type=file]').setInputFiles({name:'again.png',mimeType:'image/png',buffer:png});await expect(page.locator('.gallery-thumb')).toHaveCount(1);
 });
 

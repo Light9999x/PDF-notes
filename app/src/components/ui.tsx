@@ -1,3 +1,5 @@
+import { slideMotion } from '../core/motion';
+import { menuPosition } from '../core/menu-position';
 import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
@@ -66,10 +68,48 @@ export function Notification({children,error=false,onClose}:{children:ReactNode;
   return target?createPortal(content,target):content;
 }
 
-export function ActionMenu({label,children}:{label:string;children:ReactNode}){
-  const ref=useRef<HTMLDetailsElement>(null);
-  function close(){if(ref.current){ref.current.open=false;ref.current.querySelector('summary')?.focus({preventScroll:true});}}
-  return <details ref={ref} className="action-menu" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}}}>
-    <summary aria-label={label}>更多</summary><div className="card-menu" onClick={e=>{if((e.target as Element).closest('button'))close();}}><p className="menu-title">{label}</p>{children}</div>
-  </details>;
+let activeMenu:((restore?:boolean)=>void)|undefined;
+export function ActionMenu({label,children,caption='更多'}:{label:string;children:ReactNode;caption?:string}){
+  const trigger=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null),[open,setOpen]=useState(false),id=useId();
+  const closeRef=useRef<(restore?:boolean)=>void>(()=>{}),present=useSlide(open,menu);
+  closeRef.current=(restore=true)=>{setOpen(false);if(restore)trigger.current?.focus({preventScroll:true});};
+  useLayoutEffect(()=>{
+    if(!open||!present||!menu.current||!trigger.current)return;const node=menu.current,button=trigger.current,supported=typeof node.showPopover==='function',close=(restore=true)=>{if(!restore&&supported&&node.matches(':popover-open'))node.hidePopover();closeRef.current(restore);};activeMenu?.(false);activeMenu=close;
+    if(supported&&!node.matches(':popover-open'))node.showPopover();
+    const position=()=>{const v=window.visualViewport,r=button.getBoundingClientRect(),css=getComputedStyle(node),safe=(side:string)=>parseFloat(css.getPropertyValue('--menu-safe-'+side))||0,box={left:(v?.offsetLeft||0)+safe('left'),top:(v?.offsetTop||0)+safe('top'),width:(v?.width||window.innerWidth)-safe('left')-safe('right'),height:(v?.height||window.innerHeight)-safe('top')-safe('bottom')};
+      if(r.bottom<box.top||r.top>box.top+box.height||r.right<box.left||r.left>box.left+box.width){close(false);return;}
+      const p=menuPosition(r,box,node.scrollHeight);Object.assign(node.style,{left:p.left+'px',top:p.top+'px',width:p.width+'px',maxHeight:p.maxHeight+'px'});
+    };position();const buttons=()=>[...node.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];buttons()[0]?.focus({preventScroll:true});
+    const outside=(e:PointerEvent)=>{if(!node.contains(e.target as Node)&&!button.contains(e.target as Node))close(false);};
+    const toggle=(e:Event)=>{if((e as ToggleEvent).newState==='closed')close(node.contains(document.activeElement));};
+    const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const list=buttons(),index=list.indexOf(document.activeElement as HTMLButtonElement),next=e.key==='Home'?0:e.key==='End'?list.length-1:(index+(e.key==='ArrowDown'?1:-1)+list.length)%list.length;list[next]?.focus();}else if(e.key==='Tab'){e.preventDefault();close();if(!e.shiftKey){const all=[...document.querySelectorAll<HTMLElement>('button,a[href],input,select,textarea,[tabindex="0"]')].filter(el=>!node.contains(el)&&!el.closest('[inert]')&&el.getClientRects().length&&!el.hasAttribute('disabled'));all[all.indexOf(button)+1]?.focus();}}};
+    document.addEventListener('pointerdown',outside,true);node.addEventListener('keydown',key);node.addEventListener('toggle',toggle);window.addEventListener('scroll',position,true);window.addEventListener('resize',position);window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
+    const observer=new ResizeObserver(position);observer.observe(button);observer.observe(node);
+    return ()=>{if(activeMenu===close)activeMenu=undefined;observer.disconnect();document.removeEventListener('pointerdown',outside,true);node.removeEventListener('keydown',key);node.removeEventListener('toggle',toggle);window.removeEventListener('scroll',position,true);window.removeEventListener('resize',position);window.visualViewport?.removeEventListener('resize',position);window.visualViewport?.removeEventListener('scroll',position);};
+  },[open,present]);
+  const content=present?<div ref={menu} id={id} popover="manual" inert={!open} aria-hidden={!open} className="card-menu floating-menu" role="group" aria-label={label} onClick={e=>{if((e.target as Element).closest('button'))closeRef.current();}}><p className="menu-title">{label}</p>{children}</div>:null;
+  const host=trigger.current?.closest('dialog')||(typeof document!=='undefined'?document.body:null);
+  return <span className="action-menu"><button type="button" ref={trigger} className="menu-trigger" aria-expanded={open} aria-controls={id} aria-label={label} onClick={()=>setOpen(v=>!v)} onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();setOpen(true);}}}>{caption}</button>{host&&content?createPortal(content,host):null}</span>;
+}
+
+export function useSlide(open:boolean,ref:{current:HTMLElement|null},direction:'x'|'y'='y'){
+  const [retained,setRetained]=useState(open),initial=useRef(true);const present=open||retained;
+  useLayoutEffect(()=>{
+    const first=initial.current;initial.current=false;const node=ref.current;
+    if(open)setRetained(true);
+    if(!node)return;
+    const reduced=first||window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const transform=direction==='x'?`translateX(-${Math.max(24,node.getBoundingClientRect().width)}px)`:'translateY(-12px)';
+    return slideMotion(node,open,transform,reduced,()=>{if(!open)setRetained(false);});
+  },[open,direction]);
+  return present;
+}
+export function SlideRegion({open,children,id,className='',returnFocus}:{open:boolean;children:ReactNode;id?:string;className?:string;returnFocus?:()=>void}){
+  const ref=useRef<HTMLDivElement>(null),present=useSlide(open,ref);
+  useLayoutEffect(()=>{if(!open&&ref.current?.contains(document.activeElement))returnFocus?.();},[open]);
+  return <div ref={ref} id={id} className={className} hidden={!present} inert={!open} aria-hidden={!open}>{children}</div>;
+}
+export function Disclosure({title,children,className=''}:{title:string;children:ReactNode;className?:string}){
+  const [open,setOpen]=useState(false),button=useRef<HTMLButtonElement>(null),id=useId();
+  return <div className={'disclosure '+className}><button ref={button} className="disclosure-trigger" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(v=>!v)}>{title}</button><SlideRegion open={open} id={id} returnFocus={()=>button.current?.focus()}>{children}</SlideRegion></div>;
 }

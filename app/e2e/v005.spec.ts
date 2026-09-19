@@ -17,7 +17,7 @@ async function selectText(page:Page){
 }
 test('mobile recycle entry, direct restore, dialog Escape and focus return',async({page})=>{
   await page.setViewportSize({width:360,height:800});await importNote(page);await page.getByRole('button',{name:'返回文件庫',exact:true}).click();
-  const summary=page.locator('.document-card summary');await summary.click();await page.getByRole('button',{name:'刪除文件',exact:true}).click();
+  const summary=page.locator('.document-card .menu-trigger');await summary.click();await page.getByRole('button',{name:'刪除文件',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:/刪除「/});await expect(dialog).toBeVisible();await expect(dialog).toHaveAttribute('aria-modal','true');
   await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();await expect(summary).toBeFocused();
   await summary.click();await page.getByRole('button',{name:'刪除文件',exact:true}).click();await dialog.getByRole('button',{name:'刪除文件',exact:true}).click();

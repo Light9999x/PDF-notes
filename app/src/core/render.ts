@@ -1,5 +1,6 @@
+import { orderedAnnotations } from './layers';
 import { PDFDocument } from 'pdf-lib';
-import { objects, type Annotation, type NoteDocument } from './model';
+import { type Annotation, type NoteDocument } from './model';
 import { checkExport, loadPdf } from './pdf';
 import { annotationMatrix } from './geometry';
 import { FONT, textLayout } from './text';
@@ -29,7 +30,7 @@ export async function exportPdf(doc:NoteDocument,progress:(s:string)=>void):Prom
   const pdf=await PDFDocument.load(doc.assets[doc.pdfHash].bytes);
   const reader=await loadPdf(doc.assets[doc.pdfHash].bytes);
   try {
-    const effective=objects(doc).filter(o=>o.id!=='$document'&&o.versions.length===1&&o.versions[0].value).map(o=>({id:o.id,value:o.versions[0].value as Annotation})).sort((a,b)=>a.id.localeCompare(b.id));
+    const effective=orderedAnnotations(doc);
     for(let i=0;i<pdf.getPageCount();i++) {
       const annotations=effective.filter(o=>o.value.page===i+1);if(!annotations.length)continue;
       progress('正在匯出第 '+(i+1)+' / '+doc.pageCount+' 頁…');

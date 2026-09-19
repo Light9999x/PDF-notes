@@ -77,7 +77,7 @@ describe('reachable actions and contextual controls, rendered without starting t
     expect(html.includes('aria-label="畫筆顏色"')).toBe(tool==='pen'||tool==='text'||tool==='highlight');
     expect(html.includes('aria-label="選取模式"')).toBe(tool==='select');
     for(const label of ['匯出文件','復原','重做','閱讀'])expect(html).toContain(`aria-label="${label}"`);
-    expect(html).not.toContain('aria-label="搜尋 PDF 文字"');expect(html).toContain('aria-label="搜尋 PDF"');
+    expect(html).toContain('hidden="" inert="" aria-hidden="true"><form id="pdf-search"');expect(html).toContain('aria-label="搜尋 PDF"');
   });
   it('supplies a titled dialog, blocks dismissal for protected recovery, and makes busy buttons non-submitting',()=>{
     const html=renderToStaticMarkup(createElement(Dialog,{title:'儲存失敗',alert:true,dismissible:false,onClose:noop,portal:false,children:createElement(Field,{label:'名稱',children:createElement('input')})}));

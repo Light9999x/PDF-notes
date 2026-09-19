@@ -48,7 +48,7 @@ describe('portable .pdfnote',()=>{
   it('rejects tampered asset bytes without modifying the original document',async()=>{const d=await base();const bad=structuredClone(d);bad.assets[bad.pdfHash].bytes[0]=0;await expect(unpack(pack(bad))).rejects.toThrow();expect(d.assets[d.pdfHash].bytes[0]).toBe(37);});
   it('makes copies independent while retaining conflict history',async()=>{const d=await base();const copy=duplicate(d);expect(copy.id).not.toBe(d.id);expect(copy.assets).toEqual(d.assets);expect(copy.operations).toEqual(d.operations);});
   it('refuses to merge different base PDFs or document IDs',async()=>{const d=await base();expect(()=>merge(d,{...d,pdfHash:'other'})).toThrow();expect(()=>merge(d,duplicate(d))).toThrow();});
-  it('rejects invalid page references and unsupported future formats',async()=>{const d=edit(await base(),'x',{...note(),page:2},'A');await expect(validate(d)).rejects.toThrow();await expect(unpack(pack({...await base(),format:5 as 1}))).rejects.toThrow();});
+  it('rejects invalid page references and unsupported future formats',async()=>{const d=edit(await base(),'x',{...note(),page:2},'A');await expect(validate(d)).rejects.toThrow();await expect(unpack(pack({...await base(),format:6 as 1}))).rejects.toThrow();});
 });
 describe('PDF crop / rotation coordinates',()=>{
   it.each([0,90,180,270])('round-trips cropped-page coordinates at %i degrees',rotation=>{

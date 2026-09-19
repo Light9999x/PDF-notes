@@ -1,8 +1,9 @@
+import { orderedAnnotations } from '../core/layers';
 import { useEffect, useRef, useState } from 'react';
 import { loadPdf } from '../core/pdf';
 import { paint } from '../core/render';
 import { pageMatrix } from '../core/geometry';
-import { objects, type Annotation, type NoteDocument, type Operation } from '../core/model';
+import { type NoteDocument, type Operation } from '../core/model';
 export function Preview({doc,page=1,candidate}:{doc:NoteDocument;page?:number;candidate?:Operation}) {
   const ref=useRef<HTMLCanvasElement>(null);const [error,setError]=useState('');
   useEffect(()=>{let cancelled=false;let destroy:(()=>void)|undefined;
@@ -11,7 +12,7 @@ export function Preview({doc,page=1,candidate}:{doc:NoteDocument;page?:number;ca
       // Render offscreen to prevent cancellation / strict-mode races on visible canvas.
       const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);const ctx=canvas.getContext('2d')!;
       await p.render({canvas,viewport}).promise;ctx.transform(...pageMatrix(viewport.transform,p.view));
-      const annotations=candidate?(candidate.value&&candidate.value.kind!=='document'?[candidate.value]:[]):objects(doc).filter(o=>o.versions.length===1&&o.versions[0].value&&o.versions[0].value.kind!=='document').map(o=>o.versions[0].value as Annotation).filter(a=>a.page===page);
+      const annotations=orderedAnnotations(doc,page,candidate).map(o=>o.value);
       for(const a of annotations)await paint(ctx,a,doc);
       if(!cancelled&&ref.current){ref.current.width=canvas.width;ref.current.height=canvas.height;ref.current.getContext('2d')!.drawImage(canvas,0,0);}destroy();
     })().catch(e=>{if(!cancelled)setError(String(e));});

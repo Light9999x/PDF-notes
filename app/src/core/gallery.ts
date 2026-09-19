@@ -13,7 +13,7 @@ export function galleryChange(doc:NoteDocument,hash:string,present:boolean):Gall
 export function editGallery(doc:NoteDocument,change:GalleryChange,device:string):NoteDocument {
   if(!doc.assets[change.hash]||!['image/png','image/jpeg'].includes(doc.assets[change.hash].mime))throw new Error('圖片資產遺失或不支援。');
   if(new Set(change.parents).size!==change.parents.length||change.parents.some(id=>!doc.galleryOps?.some(o=>o.id===id&&o.hash===change.hash)))throw new Error('圖片庫版本不完整，請重新操作。');
-  return {...doc,format:4,galleryOps:[...(doc.galleryOps||[]),{...change,parents:[...change.parents],id:uid(),device,time:new Date().toISOString()}]};
+  return {...doc,format:Math.max(4,doc.format) as NoteDocument['format'],galleryOps:[...(doc.galleryOps||[]),{...change,parents:[...change.parents],id:uid(),device,time:new Date().toISOString()}]};
 }
 export function mergeGallery(a:GalleryOperation[]=[],b:GalleryOperation[]=[]){
   const result=new Map(a.map(o=>[o.id,o]));for(const op of b){if(result.has(op.id)&&canonical(result.get(op.id))!==canonical(op))throw new Error('圖片庫操作 ID 的內容不一致。');result.set(op.id,op);}
