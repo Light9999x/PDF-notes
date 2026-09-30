@@ -22,7 +22,7 @@ test('more menu overlays upward without changing card geometry, Escape restores 
 });
 for(const width of [360,1366])test(`panel animation preserves draft, external control and reduced motion at ${width}px`,async({page})=>{
   await open(page);await page.setViewportSize({width,height:900});await page.emulateMedia({reducedMotion:'reduce'});
-  const toggle=page.locator('[data-panel-toggle]');await expect(toggle).toHaveAttribute('aria-expanded','true');await toggle.click();await expect(page.locator('.context-content')).not.toBeVisible();await expect(page.locator('.context-content')).toHaveAttribute('inert','');expect(await toggle.evaluate(n=>!!n.closest('.context-panel'))).toBe(false);await toggle.click();await expect(page.locator('.context-content')).toBeVisible();
+  const toggle=page.locator('[data-panel-toggle]');await expect(toggle).toHaveAttribute('aria-expanded','true');await toggle.click();await expect(page.locator('.context-content')).not.toBeVisible();await expect(page.locator('.context-panel')).toHaveAttribute('inert','');expect(await toggle.evaluate(n=>!!n.closest('.context-panel'))).toBe(false);await toggle.click();await expect(page.locator('.context-content')).toBeVisible();
   await page.emulateMedia({reducedMotion:'no-preference'});await toggle.click();await toggle.click();await expect(toggle).toHaveAttribute('aria-expanded','true');await expect(page.locator('.context-content')).toBeVisible();
   const colors=await page.evaluate(()=>[getComputedStyle(document.querySelector('.editor-body')!).backgroundColor,getComputedStyle(document.querySelector('.page-scroll')!).backgroundColor]);expect(colors[0]).toBe(colors[1]);
 });

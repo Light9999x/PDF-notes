@@ -82,3 +82,8 @@ Drive 的 `type=library` 快照與原本 asset／snapshot 分開，仍保留不�
 ## v006 擴充（App 0.6.0）
 
 文件 format 3 加入圖片庫 `gallery` 聯集會員及四類物件 angle 語意，format 1／2 可讀；IndexedDB 升至 5 保留原 stores，阻止版本 4 舊程式忽略新資料。選取改實際相交，變換共用矩陣與批次 expected heads；新文字方向依可見頁面補償，原位草稿不進歷史直到提交。搜尋字元映射與 DOM Range 標記只在 UI。完整相容、操作和面板設計見 [V006-DESIGN.md](V006-DESIGN.md)。
+
+
+## v010 擴充（App 0.10.0）
+
+IndexedDB 8 保留既有 stores；文件新增 format 6 的 `Annotation.group` 完整成員描述。每個成員沿用原物件因果圖，所有群組操作保存完整 expected heads 批次，合併後重新檢查成員一致性。群組狀態不依牆鐘取勝，不新增假註記 kind，不在讀取時改歷史。v009 的 layer 排序持續有效。手勢協調與面板外殼拆為獨立元件；細節見 [V010-DESIGN.md](V010-DESIGN.md)。

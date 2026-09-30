@@ -1,3 +1,4 @@
+import { expandGroups, groupState } from './groups';
 import { annotationMatrix, transform, annotationCorners, segmentDistance, sweptHit, contains } from './geometry';
 import { heads, objects, type Annotation, type EditRequest, type NoteDocument, type Point } from './model';
 
@@ -51,7 +52,8 @@ export function editableObjects(doc:NoteDocument):SelectedObject[]{return object
 export function selectRegion(doc:NoteDocument,page:number,region:Region){
   const selected=editableObjects(doc).filter(o=>o.value.page===page&&intersectsRegion(o.value,region));
   const skipped=objects(doc).filter(o=>o.versions.length>1&&o.versions.some(v=>v.value&&v.value.kind!=='document'&&v.value.page===page&&intersectsRegion(v.value,region))).length;
-  return {selected,skipped};
+  const ids=expandGroups(doc,selected.map(o=>o.id));
+  return {selected:editableObjects(doc).filter(o=>ids.includes(o.id)),skipped:skipped+selected.filter(o=>groupState(doc).blocked.has(o.id)).length};
 }
 export function selectionChanges(selection:SelectedObject[],change:(a:Annotation)=>Annotation|null):EditRequest[]{
   return selection.map(o=>({id:o.id,expected:[o.head],value:change(o.value)}));

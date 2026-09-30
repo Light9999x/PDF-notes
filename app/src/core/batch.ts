@@ -1,3 +1,5 @@
+import { BatchRejectedError } from './edit-error';
+import { assertGroupBatch, groupState } from './groups';
 import { edit, heads, type EditRequest, type NoteDocument } from './model';
 
 export function assertExpected(doc:NoteDocument,changes:EditRequest[]):void {
@@ -5,7 +7,7 @@ export function assertExpected(doc:NoteDocument,changes:EditRequest[]):void {
     const current=heads(doc,change.id).map(h=>h.id).sort();
     const expected=[...change.expected].sort();
     if(current.length!==expected.length||current.some((id,i)=>id!==expected[i]))
-      throw new Error('物件已收到其他修改，這次操作未套用。請重新操作或處理衝突。');
+      throw new BatchRejectedError('物件已收到其他修改，這次操作未套用。請重新操作或處理衝突。');
   }
 }
 // Validate the whole snapshot before constructing any operations. The storage
@@ -13,5 +15,8 @@ export function assertExpected(doc:NoteDocument,changes:EditRequest[]):void {
 export function editBatch(doc:NoteDocument,changes:EditRequest[],device:string):NoteDocument {
   if(new Set(changes.map(c=>c.id)).size!==changes.length)throw new Error('同一批次不可重複修改同一物件。');
   assertExpected(doc,changes);
-  return changes.reduce((next,c)=>edit(next,c.id,c.value,device),doc);
+  assertGroupBatch(doc,changes);
+  const next=changes.reduce((next,c)=>edit(next,c.id,c.value,device),doc);
+  const touched=new Set(changes.map(c=>c.id));if(groupState(next).issues.some(g=>g.members.some(id=>touched.has(id))))throw new Error('群組成員資料不完整，整組操作已取消。');
+  return next;
 }

@@ -4,7 +4,8 @@ export async function exportAction(page:Page,name:'工作存檔'|'匯出 PDF'){
   await page.getByRole('dialog',{name:'匯出文件',exact:true}).getByRole('button',{name,exact:true}).click();
 }
 export async function pageSettings(page:Page){
-  if(!await page.getByLabel('展示方向').isVisible())await page.getByRole('button',{name:/頁面設定/}).click();
+  const tool=page.getByRole('button',{name:'頁面',exact:true});if(await tool.getAttribute('aria-pressed')!=='true')await tool.click();
+  const toggle=page.locator('[data-panel-toggle]');if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();
 }
 export async function folders(page:Page){
   // v007 folders are always visible; older workflows ask for the global view.

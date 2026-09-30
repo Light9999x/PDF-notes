@@ -1,6 +1,6 @@
 # 手機測試：Galaxy S24+／Android 16
 
-App 0.8.1 是既有 0.8.0 的資安與部署修補；v009 前五項 UI 尚未實作。本次交付可安裝 **PWA**，不是 APK，也未上架 Google Play。
+目前原始碼為 App 0.10.0；v010 更動已加入，雙指、面板動畫及真機待驗收，請先看 [v010 驗證矩陣](VALIDATION-V010.md)。本次交付可安裝 **PWA**，不是 APK，也未上架 Google Play。
 
 - 原始碼：[Light9999x/PDF-notes](https://github.com/Light9999x/PDF-notes)
 - 手機測試網址：[頁間 PDFnote](https://light9999x.github.io/PDF-notes/)

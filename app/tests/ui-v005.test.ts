@@ -68,9 +68,9 @@ describe('reachable actions and contextual controls, rendered without starting t
     const trash=renderToStaticMarkup(createElement(LibraryActions,{...props,trash:true}));expect(trash).toContain('返回文件庫');expect(trash).not.toContain('匯入文件');
   });
   const base:ComponentProps<typeof EditorToolbar>={name:'長文件名稱'.repeat(40),status:'已存至本機 · 尚未同步',tool:'read',onTool:noop,color:'#245cba',onColor:noop,weight:8,onWeight:noop,eraserSize:40,onEraser:noop,onBack:noop,onExport:noop,onImage:noop,ready:true,working:false,canUndo:true,canRedo:true,onUndo:noop,onRedo:noop,selectionMode:'box',onSelectionMode:noop,dirty:false,page:1,pages:3,onPage:noop,zoom:1,onZoom:noop,onFit:noop,onFitPage:noop,zoomMode:'manual',onRotate:noop,layout:'vertical',onLayout:noop,query:'',onQuery:noop,onSearch:noop};
-  it.each(['read','select','pen','highlight','text','erase','image'] as const)('%s exposes only its relevant settings but always keeps export and history',tool=>{
+  it.each(['page','read','select','pen','highlight','text','erase','image'] as const)('%s exposes only its relevant settings but always keeps export and history',tool=>{
     const html=renderToStaticMarkup(createElement(EditorToolbar,{...base,tool}));
-    expect(html).toContain('class="tool-options" aria-label="目前工具設定"');
+    expect(html.includes('class="tool-options" aria-label="目前工具設定"')).toBe(!['page','read','image'].includes(tool));
     const imageButton=html.match(/<button[^>]*aria-label="插入圖片"[^>]*>/)?.[0];expect(imageButton).toContain(`aria-pressed="${tool==='image'}"`);
     expect(html.includes('aria-label="橡皮擦直徑"')).toBe(tool==='erase');
     expect(html.includes('aria-label="直徑"')).toBe(tool==='pen'||tool==='highlight');

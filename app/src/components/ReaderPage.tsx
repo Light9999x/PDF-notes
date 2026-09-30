@@ -12,11 +12,12 @@ export function ReaderPage({reader,number,view,zoom,read,pinned,hits=[],currentH
   useEffect(()=>{if(!read){const selection=window.getSelection();if(selection?.anchorNode&&textLayer.current?.contains(selection.anchorNode))selection.removeAllRanges();}},[read]);
   const hitKey=JSON.stringify(hits),currentKey=JSON.stringify(currentHit);
   useEffect(()=>{if(!active)return;const next=highlightRects(divs.current,hits,currentHit,paper.current!);setRects(next);},[hitKey,currentKey,generation,active,view]);
-  useEffect(()=>{if(!active)return;const frame=requestAnimationFrame(()=>{
-    const hit=paper.current?.querySelector('.search-hit.current'),root=paper.current?.closest<HTMLElement>('.page-scroll');if(!hit||!root)return;
+  const centeredHit=useRef<string|undefined>(undefined);
+  useEffect(()=>{if(!active||centeredHit.current===currentKey)return;const frame=requestAnimationFrame(()=>{
+    const hit=paper.current?.querySelector('.search-hit.current'),root=paper.current?.closest<HTMLElement>('.page-scroll');if(!hit||!root)return;centeredHit.current=currentKey;
     const r=root.getBoundingClientRect(),h=hit.getBoundingClientRect(),cover=parseFloat(getComputedStyle(root).getPropertyValue('--panel-cover'))||0;
     root.scrollLeft+=h.left+h.width/2-r.left-cover-(root.clientWidth-cover)/2;root.scrollTop+=h.top+h.height/2-r.top-root.clientHeight/2;
-  });return ()=>cancelAnimationFrame(frame);},[currentKey,generation,active,view]);
+  });return ()=>cancelAnimationFrame(frame);},[currentKey,generation,active,view,rects]);
   useEffect(()=>{const observer=new IntersectionObserver(entries=>setNear(entries[0].isIntersecting),{root:paper.current!.closest('.page-scroll'),rootMargin:'700px'});observer.observe(paper.current!);return ()=>observer.disconnect();},[]);
   useEffect(()=>{
     if(!active)return;let cancelled=false,renderTask:ReturnType<pdfjs.PDFPageProxy['render']>|undefined,layer:pdfjs.TextLayer|undefined,page:pdfjs.PDFPageProxy|undefined;

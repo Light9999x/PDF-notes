@@ -3,7 +3,7 @@ import { editableObjects, type SelectedObject } from './selection';
 import { textLayout } from './text';
 
 export function selectedText(doc:NoteDocument,selection:SelectedObject[]){
-  if(selection.length!==1||selection[0].value.kind!=='text')return;
+  if(selection.length!==1||selection[0].value.kind!=='text'||!!selection[0].value.group)return;
   const viewed=selection[0];
   return editableObjects(doc).find(o=>o.id===viewed.id&&o.head===viewed.head&&o.value.kind==='text');
 }

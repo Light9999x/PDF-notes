@@ -36,7 +36,7 @@ for(const [width,height] of [[360,800],[412,915],[915,412],[1366,768]])test(`too
       if(search)await page.getByRole('button',{name:'搜尋 PDF',exact:true}).click();let reference:{height:number;top:number}|undefined;
       for(const name of ['閱讀','選取','畫筆','螢光筆','文字','橡皮擦','插入圖片']){
         await page.getByRole('button',{name,exact:true}).click();const rect=await page.evaluate(()=>({height:document.querySelector('.editor-controls')!.getBoundingClientRect().height,top:document.querySelector('.page-scroll')!.getBoundingClientRect().top}));reference??=rect;expect(Math.abs(rect.height-reference.height)).toBeLessThanOrEqual(1);expect(Math.abs(rect.top-reference.top)).toBeLessThanOrEqual(1);
-        const clipped=await page.locator('.tool-options').evaluate(root=>{const r=root.getBoundingClientRect();return [...root.querySelectorAll('button,input')].some(el=>{const b=el.getBoundingClientRect();return b.height<44||b.top<r.top||b.bottom>r.bottom;});});expect(clipped).toBe(false);
+        const options=page.locator('.tool-options:visible');if(!await options.count())continue;const clipped=await options.evaluate(root=>{const r=root.getBoundingClientRect();return [...root.querySelectorAll('button,input')].some(el=>{const b=el.getBoundingClientRect();return b.height<44||b.top<r.top||b.bottom>r.bottom;});});expect(clipped).toBe(false);
       }
       if(search)await page.getByRole('button',{name:'關閉搜尋',exact:true}).click();
     }
@@ -44,7 +44,7 @@ for(const [width,height] of [[360,800],[412,915],[915,412],[1366,768]])test(`too
 });
 
 test('left panel external control remains outside content and releases width',async({page})=>{
-  await open(page);const geometry=()=>page.evaluate(()=>{const content=document.querySelector('.context-content')!.getBoundingClientRect(),toggle=document.querySelector('[data-panel-toggle]')!,t=toggle.getBoundingClientRect(),r=document.querySelector('.page-scroll')!.getBoundingClientRect();return {outside:!toggle.closest('.context-panel'),edge:Math.abs(content.right-t.left),reader:r.left>=t.right-1,width:r.width};});const expanded=await geometry();expect(expanded.outside&&expanded.reader).toBe(true);expect(expanded.edge).toBeLessThanOrEqual(1);await page.getByRole('button',{name:'收合側面板'}).click();expect((await geometry()).width).toBeGreaterThan(expanded.width);
+  await open(page);const geometry=()=>page.evaluate(()=>{const content=document.querySelector('.context-content')!.getBoundingClientRect(),toggle=document.querySelector('[data-panel-toggle]')!,t=toggle.getBoundingClientRect(),r=document.querySelector('.page-scroll')!.getBoundingClientRect();return {outside:!toggle.closest('.context-panel'),edge:Math.abs(content.right-t.left),reader:r.left>=content.right-1,width:r.width};});const expanded=await geometry();expect(expanded.outside&&expanded.reader).toBe(true);expect(expanded.edge).toBeLessThanOrEqual(1);await page.getByRole('button',{name:'收合側面板'}).click();expect((await geometry()).width).toBeGreaterThan(expanded.width);
 });
 
 test('gallery remove survives reload, preserves instances and same-bytes import restores membership',async({page})=>{

@@ -1,3 +1,4 @@
+import { groupState } from './groups';
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument } from 'pdf-lib';
@@ -24,4 +25,4 @@ export async function importFile(file:File,device:string):Promise<NoteDocument> 
   const doc:NoteDocument={format:1,id:uid(),originalName:file.name,originalHash:source.hash,pdfHash:pdfAsset.hash,pageCount:pages,created:new Date().toISOString(),operations:[],assets:{[source.hash]:source,[pdfAsset.hash]:pdfAsset}};
   return edit(doc,META,{kind:'document',name:file.name.replace(/\.[^.]+$/,'')},device);
 }
-export function checkExport(doc:NoteDocument) { if(conflicts(doc).length)throw new Error('請先處理此文件的衝突，再匯出合併 PDF；.pdfnote 可完整保留未解決版本。'); }
+export function checkExport(doc:NoteDocument) { if(conflicts(doc).length||groupState(doc).issues.length)throw new Error('請先處理此文件的衝突，再匯出合併 PDF；.pdfnote 可完整保留未解決版本。'); }

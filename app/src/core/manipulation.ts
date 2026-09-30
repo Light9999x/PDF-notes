@@ -39,3 +39,8 @@ export function screenRotationControl(frame:Annotation,m:Matrix,offset=48,visibl
   const x=visible?Math.max(visible.left+22,Math.min(visible.right-22,(left+right)/2)):(left+right)/2,y=visible?Math.max(visible.top+22,top-offset):top-offset;
   return {anchor:inverse(m,{x:(left+right)/2,y:top}),handle:inverse(m,{x,y})};
 }
+
+export function hitSelectionFrame(group:SelectedObject[],point:Point):boolean {
+  if(!group.length)return false;const frame=selectionFrame(group),p=inverse(annotationMatrix(frame),point);
+  return p.x>=0&&p.y>=0&&p.x<=frame.width&&p.y<=frame.height;
+}

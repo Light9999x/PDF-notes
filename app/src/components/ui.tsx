@@ -69,27 +69,28 @@ export function Notification({children,error=false,onClose}:{children:ReactNode;
 }
 
 let activeMenu:((restore?:boolean)=>void)|undefined;
-export function ActionMenu({label,children,caption='更多'}:{label:string;children:ReactNode;caption?:string}){
-  const trigger=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null),[open,setOpen]=useState(false),id=useId();
+export function ActionMenu({label,children,caption='更多',anchor,onClose,returnFocus,triggerless=false}:{label:string;children:ReactNode;caption?:string;triggerless?:boolean;anchor?:{left:number;top:number;width:number;height:number};onClose?:()=>void;returnFocus?:HTMLElement|null}){
+  const trigger=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null),[localOpen,setLocalOpen]=useState(false),id=useId();
+  const open=triggerless?!!anchor:!!anchor||localOpen;const retainedChildren=useRef(children);if(open)retainedChildren.current=children;const setOpen=(value:boolean|((old:boolean)=>boolean))=>{const next=typeof value==='function'?value(open):value;if(!next&&(anchor||triggerless))onClose?.();else setLocalOpen(next);};
   const closeRef=useRef<(restore?:boolean)=>void>(()=>{}),present=useSlide(open,menu);
-  closeRef.current=(restore=true)=>{setOpen(false);if(restore)trigger.current?.focus({preventScroll:true});};
+  closeRef.current=(restore=true)=>{setOpen(false);if(restore)(returnFocus||trigger.current)?.focus({preventScroll:true});};
   useLayoutEffect(()=>{
-    if(!open||!present||!menu.current||!trigger.current)return;const node=menu.current,button=trigger.current,supported=typeof node.showPopover==='function',close=(restore=true)=>{if(!restore&&supported&&node.matches(':popover-open'))node.hidePopover();closeRef.current(restore);};activeMenu?.(false);activeMenu=close;
+    if(!open||!present||!menu.current||(!trigger.current&&!anchor))return;const node=menu.current,button=returnFocus||trigger.current||document.body,supported=typeof node.showPopover==='function',close=(restore=true)=>{if(!restore&&supported&&node.matches(':popover-open'))node.hidePopover();closeRef.current(restore);};activeMenu?.(false);activeMenu=close;
     if(supported&&!node.matches(':popover-open'))node.showPopover();
-    const position=()=>{const v=window.visualViewport,r=button.getBoundingClientRect(),css=getComputedStyle(node),safe=(side:string)=>parseFloat(css.getPropertyValue('--menu-safe-'+side))||0,box={left:(v?.offsetLeft||0)+safe('left'),top:(v?.offsetTop||0)+safe('top'),width:(v?.width||window.innerWidth)-safe('left')-safe('right'),height:(v?.height||window.innerHeight)-safe('top')-safe('bottom')};
+    const position=()=>{const v=window.visualViewport,r=anchor?{...anchor,right:anchor.left+anchor.width,bottom:anchor.top+anchor.height}:button.getBoundingClientRect(),css=getComputedStyle(node),safe=(side:string)=>parseFloat(css.getPropertyValue('--menu-safe-'+side))||0,box={left:(v?.offsetLeft||0)+safe('left'),top:(v?.offsetTop||0)+safe('top'),width:(v?.width||window.innerWidth)-safe('left')-safe('right'),height:(v?.height||window.innerHeight)-safe('top')-safe('bottom')};
       if(r.bottom<box.top||r.top>box.top+box.height||r.right<box.left||r.left>box.left+box.width){close(false);return;}
       const p=menuPosition(r,box,node.scrollHeight);Object.assign(node.style,{left:p.left+'px',top:p.top+'px',width:p.width+'px',maxHeight:p.maxHeight+'px'});
     };position();const buttons=()=>[...node.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];buttons()[0]?.focus({preventScroll:true});
-    const outside=(e:PointerEvent)=>{if(!node.contains(e.target as Node)&&!button.contains(e.target as Node))close(false);};
+    const outside=(e:PointerEvent)=>{if(!node.contains(e.target as Node)&&(!!anchor||!button.contains(e.target as Node)))close(false);};
     const toggle=(e:Event)=>{if((e as ToggleEvent).newState==='closed')close(node.contains(document.activeElement));};
     const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const list=buttons(),index=list.indexOf(document.activeElement as HTMLButtonElement),next=e.key==='Home'?0:e.key==='End'?list.length-1:(index+(e.key==='ArrowDown'?1:-1)+list.length)%list.length;list[next]?.focus();}else if(e.key==='Tab'){e.preventDefault();close();if(!e.shiftKey){const all=[...document.querySelectorAll<HTMLElement>('button,a[href],input,select,textarea,[tabindex="0"]')].filter(el=>!node.contains(el)&&!el.closest('[inert]')&&el.getClientRects().length&&!el.hasAttribute('disabled'));all[all.indexOf(button)+1]?.focus();}}};
     document.addEventListener('pointerdown',outside,true);node.addEventListener('keydown',key);node.addEventListener('toggle',toggle);window.addEventListener('scroll',position,true);window.addEventListener('resize',position);window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
     const observer=new ResizeObserver(position);observer.observe(button);observer.observe(node);
     return ()=>{if(activeMenu===close)activeMenu=undefined;observer.disconnect();document.removeEventListener('pointerdown',outside,true);node.removeEventListener('keydown',key);node.removeEventListener('toggle',toggle);window.removeEventListener('scroll',position,true);window.removeEventListener('resize',position);window.visualViewport?.removeEventListener('resize',position);window.visualViewport?.removeEventListener('scroll',position);};
-  },[open,present]);
-  const content=present?<div ref={menu} id={id} popover="manual" inert={!open} aria-hidden={!open} className="card-menu floating-menu" role="group" aria-label={label} onClick={e=>{if((e.target as Element).closest('button'))closeRef.current();}}><p className="menu-title">{label}</p>{children}</div>:null;
+  },[open,present,anchor]);
+  const content=present?<div ref={menu} id={id} popover="manual" inert={!open} aria-hidden={!open} className="card-menu floating-menu" role="group" aria-label={label} onClick={e=>{if((e.target as Element).closest('button'))closeRef.current();}}><p className="menu-title">{label}</p>{open?children:retainedChildren.current}</div>:null;
   const host=trigger.current?.closest('dialog')||(typeof document!=='undefined'?document.body:null);
-  return <span className="action-menu"><button type="button" ref={trigger} className="menu-trigger" aria-expanded={open} aria-controls={id} aria-label={label} onClick={()=>setOpen(v=>!v)} onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();setOpen(true);}}}>{caption}</button>{host&&content?createPortal(content,host):null}</span>;
+  return <span className="action-menu">{!anchor&&!triggerless&&<button type="button" ref={trigger} className="menu-trigger" aria-expanded={open} aria-controls={id} aria-label={label} onClick={()=>setOpen(v=>!v)} onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();setOpen(true);}}}>{caption}</button>}{host&&content?createPortal(content,host):null}</span>;
 }
 
 export function useSlide(open:boolean,ref:{current:HTMLElement|null},direction:'x'|'y'='y'){

@@ -1,8 +1,10 @@
+import { assertGroupBatch, groupState, repairGroupChanges } from './groups';
+import { BatchRejectedError } from './edit-error';
 import { assertExpected } from './batch';
 import { openDB } from 'idb';
-import { heads, merge, type EditRequest, type NoteDocument } from './model';
+import { canonical, heads, merge, type EditRequest, type NoteDocument } from './model';
 import { canMoveFolder, folderParent, folders, parentKey, cleanFolderName, emptyLibrary, folderKey, libraryEdit, libraryHeads, memberKey, mergeLibrary, validateLibrary, type LibraryState } from './library';
-const db = openDB('pdfnote-v1',7,{upgrade(db){
+const db = openDB('pdfnote-v1',8,{upgrade(db){
   if(!db.objectStoreNames.contains('documents'))db.createObjectStore('documents',{keyPath:'id'});
   if(!db.objectStoreNames.contains('settings'))db.createObjectStore('settings');
   if(!db.objectStoreNames.contains('assets'))db.createObjectStore('assets');
@@ -21,11 +23,11 @@ async function hydrate(doc:NoteDocument|undefined):Promise<NoteDocument|undefine
 export const store = {
   async list():Promise<NoteDocument[]> {return Promise.all((await (await db).getAll('documents')).map(async d=>(await hydrate(d))!));},
   async get(id:string):Promise<NoteDocument|undefined> {return hydrate(await (await db).get('documents',id));},
-  async save(doc:NoteDocument,create?:{folderId:string|null;device:string},expected?:EditRequest[]):Promise<NoteDocument> {
+  async save(doc:NoteDocument,create?:{folderId:string|null;device:string},expected?:EditRequest[],repairGroup?:string):Promise<NoteDocument> {
     const tx=(await db).transaction(['documents','assets','library'],'readwrite');
     void tx.done.catch(()=>{});
     const existing=await tx.objectStore('documents').get(doc.id) as NoteDocument|undefined;
-    if(expected&&existing){try{assertExpected(existing,expected);}catch(error){tx.abort();throw error;}}
+    if(expected&&existing){try{assertExpected(existing,expected);if(repairGroup){if(canonical(repairGroupChanges(existing,repairGroup))!==canonical(expected))throw new Error('群組關係已更新，請重新檢視。');}else assertGroupBatch(existing,expected);}catch(error){tx.abort();throw new BatchRejectedError(error instanceof Error?error.message:String(error));}}
     if(create){
       if(existing){tx.abort();throw new Error('此文件已存在，請選擇建立副本或合併。');}
       const library:LibraryState=await tx.objectStore('library').get('main')||emptyLibrary();
@@ -34,6 +36,7 @@ export const store = {
     }
     if(existing){for(const [key,info] of Object.entries(existing.assets))existing.assets[key]=info.bytes?info:doc.assets[key]||await tx.objectStore('assets').get(key);}
     const next=existing?merge(existing,doc):doc;
+    if(expected){const touched=new Set(expected.map(c=>c.id));if(groupState(next).issues.some(g=>g.members.some(id=>touched.has(id)))){tx.abort();throw new BatchRejectedError('群組關係已更新，整批操作未套用。');}}
     for(const asset of Object.values(next.assets))if(!(await tx.objectStore('assets').getKey(asset.hash)))await tx.objectStore('assets').put(asset,asset.hash);
     const {assets,...record}=next;
     await tx.objectStore('documents').put({...record,assets:Object.fromEntries(Object.values(assets).map(a=>[a.hash,{hash:a.hash,mime:a.mime}]))});

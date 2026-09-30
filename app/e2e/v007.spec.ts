@@ -31,9 +31,9 @@ test('panel preserves property draft and manual preference across breakpoints',a
 for(const width of [360,601,1366])test(`fit page respects visible bounds with panel expanded/collapsed at ${width}px`,async({page})=>{
   await open(page);await page.setViewportSize({width,height:800});
   for(const expanded of [true,false]){
-    if(!expanded)await page.getByRole('button',{name:'收合側面板'}).click();
+
     for(let rotation=0;rotation<4;rotation++){
-      if(rotation)await page.getByRole('button',{name:'旋轉頁面',exact:true}).click();
+      await pageSettings(page);if(rotation)await page.getByRole('button',{name:'旋轉頁面',exact:true}).click();if(!expanded)await page.getByRole('button',{name:'收合側面板'}).click();
       await expect.poll(async()=>page.locator('.page-scroll').evaluate(root=>{const r=root.getBoundingClientRect(),p=root.querySelector('.paper')!.getBoundingClientRect(),panel=document.querySelector('.context-panel.narrow.expanded .context-content')?.getBoundingClientRect();const cover=parseFloat(getComputedStyle(root).getPropertyValue('--panel-cover'))||0,left=r.left+(panel?cover:0);return p.left>=left-1&&p.top>=r.top-1&&p.right<=r.right+1&&p.bottom<=r.bottom+1;})).toBe(true);
     }
   }

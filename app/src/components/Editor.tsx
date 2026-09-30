@@ -1,3 +1,7 @@
+import { completeGroupBatch, expandGroups, groupingChanges, groupState } from '../core/groups';
+import { useDocumentGestures, type PinchAnchor } from './useDocumentGestures';
+import { clampZoom, DRAG_SLOP } from '../core/document-gesture';
+import { ContextPanel } from './ContextPanel';
 import { compareLayers, layerChanges, layerLabels, nextLayer, type LayerAction } from '../core/layers';
 import { ImageCutout } from './ImageCutout';
 import { clickSelection } from '../core/click-selection';
@@ -11,9 +15,9 @@ import { SelectionControls } from './SelectionControls';
 import { InlineText, type TextDraft } from './InlineText';
 import { ImageGallery, ImageDropPreview } from './ImageGallery';
 import { usePdfSearch } from './usePdfSearch';
-import { resizeGroup, rotateGroup, selectionFrame, uprightAt, uprightTextAt, visibleAngle, type Handle } from '../core/manipulation';
-import { EditorToolbar, type Tool } from './EditorToolbar';
-import { Button, Dialog, useMedia, useSlide } from './ui';
+import { resizeGroup, rotateGroup, selectionFrame, hitSelectionFrame, uprightAt, uprightTextAt, visibleAngle, type Handle } from '../core/manipulation';
+import { EditorToolbar, ToolOptions, PageSettings, type Tool } from './EditorToolbar';
+import { ActionMenu, Button, Dialog, useMedia } from './ui';
 import { editorKeyAction } from '../core/ui-policy';
 import { useEffect, useRef, useState } from 'react';
 import { addAsset, heads, nameOf, objects, uid, type EditRequest, type Annotation, type NoteDocument, type Point, type Value } from '../core/model';
@@ -45,9 +49,13 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const scroll=useRef<HTMLDivElement>(null),panelContent=useRef<HTMLDivElement>(null);
   const deferredView=useRef<(()=>void)|undefined>(undefined),scrollTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const panelVisible=panelOpen&&!(narrow&&!!placing);
-  const panelPresent=useSlide(panelVisible,panelContent,'x');
+  const panelPresent=panelVisible;
+  const pinchAnchor=useRef<PinchAnchor|undefined>(undefined);
+  const [objectMenu,setObjectMenu]=useState<{anchor:{left:number;top:number;width:number;height:number};snapshot:SelectedObject[]}>();
+  const touchInput=useRef(false);
+  const pinch=useDocumentGestures(scroll,{zoom,tool,read:(tool==='read'||tool==='page')&&!placing,disabled:working||loading||!!textDraft||propertiesDirty,cancel:cancelGesture,onActivity:()=>{touchInput.current=true;setObjectMenu(undefined);},menu:openObjectMenu,onZoom:(next,anchor)=>{pinchAnchor.current=anchor;restoring.current=true;setZoomMode('manual');setZoom(clampZoom(next));setGeometryRevision(v=>v+1);}});
   const manipulating=tool==='select'||tool==='image';
-  const gesture=useRef<{start:Point;rect?:{left:number;top:number;width:number;height:number};points?:Point[];straight?:StraightStroke;pointer:number;page:number;rotate?:boolean;resize?:Handle;frame?:Annotation;delta?:number;lastClient?:Point;erasing?:Map<string,History>;selecting?:'box'|'lasso';selectionPoints?:Point[];dragged?:boolean;clientStart?:Point;group?:SelectedObject[];beforeSelection?:string[];clickTarget?:SelectedObject;shift?:boolean}|undefined>(undefined);
+  const gesture=useRef<{start:Point;rect?:{left:number;top:number;width:number;height:number};points?:Point[];straight?:StraightStroke;pointer:number;page:number;rotate?:boolean;resize?:Handle;frame?:Annotation;delta?:number;lastClient?:Point;erasing?:Map<string,History>;selecting?:'box'|'lasso';selectionPoints?:Point[];dragged?:boolean;clientStart?:Point;group?:SelectedObject[];beforeSelection?:string[];clickTarget?:SelectedObject;shift?:boolean;touch?:boolean}|undefined>(undefined);
   const liveDraft=useRef<Annotation|undefined>(undefined);const lastLocalOperations=useRef(new Set<string>());const currentDoc=useRef(doc);currentDoc.current=doc;
   useEffect(()=>{let disposed=false;let pdf:PDFDocumentProxy|undefined;setReady(false);setLoading(true);setPanelOpen(true);
     void Promise.all([loadPdf(doc.assets[doc.pdfHash].bytes),store.setting<any>('position:'+doc.id,{}),store.setting<any>('tools',{weight:3,eraserSize:24})]).then(([p,pos,settings])=>{
@@ -67,20 +75,21 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const view=views[page-1];
   const search=usePdfSearch(reader,query,goPage);
   useEffect(()=>{setGroupAngle(0);rotationPivot.current=undefined;if(selected.length&&tool!=='image')setPanel('properties');},[selected.join('|')]);
-  function remember(){const root=scroll.current;if(!root||!ready||restoring.current||gesture.current||textRef.current)return;
+  function remember(){const root=scroll.current;if(!root||!ready||restoring.current||gesture.current||textRef.current||pinch.current)return;
     const r=root.getBoundingClientRect();let best=page,bestArea=-Infinity;
     for(const node of root.querySelectorAll<HTMLElement>('.paper')){const b=node.getBoundingClientRect();const area=pageVisibilityScore(b,{left:r.left+space.left,top:r.top,width:space.visibleWidth,height:root.clientHeight},layout,zoomMode);if(area>bestArea){bestArea=area;best=Number(node.dataset.page);}}
     const node=root.querySelector<HTMLElement>('[data-page="'+best+'"]');if(!node)return;const b=node.getBoundingClientRect();
     const anchor={page:best,x:(r.left+space.left-b.left)/b.width,y:(r.top-b.top)/b.height};pendingAnchor.current=anchor;setPage(best);
     void store.set('position:'+doc.id,{page:best,zoom,zoomMode,rotation,layout,anchor:{x:anchor.x,y:anchor.y}}).catch(onError);
   }
-  function restore(){const root=scroll.current,a=pendingAnchor.current;if(!root||gesture.current||textRef.current||imageDragging)return;const node=root.querySelector<HTMLElement>('[data-page="'+a.page+'"]');if(!node)return;const r=root.getBoundingClientRect(),b=node.getBoundingClientRect();if(legacyScroll.current!==null){a.y=(legacyScroll.current-parseFloat(getComputedStyle(root).paddingTop))/b.height;legacyScroll.current=null;}if(zoomMode==='page'){root.scrollLeft+=b.left-r.left-space.left-(space.visibleWidth-b.width)/2;root.scrollTop+=b.top-r.top-(root.clientHeight-b.height)/2;}else{root.scrollLeft+=b.left-r.left-space.left+a.x*b.width;root.scrollTop+=b.top-r.top+a.y*b.height;}setPage(a.page);restoring.current=false;remember();}
+  function restore(){const root=scroll.current,a=pendingAnchor.current;if(!root||root.dataset.panelAnimating||gesture.current||textRef.current||imageDragging||pinch.current)return;const pin=pinchAnchor.current;if(pin){if(views[pin.page-1]?.scale!==zoom)return;const node=root.querySelector<HTMLElement>('[data-page="'+pin.page+'"]');if(node){const b=node.getBoundingClientRect();root.scrollLeft+=b.left+pin.x*b.width-pin.client.x;root.scrollTop+=b.top+pin.y*b.height-pin.client.y;setPage(pin.page);pinchAnchor.current=undefined;restoring.current=false;remember();}return;}const node=root.querySelector<HTMLElement>('[data-page="'+a.page+'"]');if(!node)return;const r=root.getBoundingClientRect(),b=node.getBoundingClientRect();if(legacyScroll.current!==null){a.y=(legacyScroll.current-parseFloat(getComputedStyle(root).paddingTop))/b.height;legacyScroll.current=null;}if(zoomMode==='page'){root.scrollLeft+=b.left-r.left-space.left-(space.visibleWidth-b.width)/2;root.scrollTop+=b.top-r.top-(root.clientHeight-b.height)/2;}else{root.scrollLeft+=b.left-r.left-space.left+a.x*b.width;root.scrollTop+=b.top-r.top+a.y*b.height;}setPage(a.page);restoring.current=false;remember();}
   useEffect(()=>{if(!views.length||loading)return;restoring.current=true;const frame=requestAnimationFrame(restore);return ()=>cancelAnimationFrame(frame);},[views,layout,loading]);
   function goPage(n:number){if(textRef.current||gesture.current){deferredView.current=()=>goPage(n);return;}pendingAnchor.current={page:n,x:0,y:0};restoring.current=true;setPage(n);setGeometryRevision(v=>v+1);requestAnimationFrame(()=>restoreRef.current());}
   function changeView(action:()=>void){if(textRef.current||gesture.current){deferredView.current=()=>changeView(action);return;}remember();restoring.current=true;action();setGeometryRevision(v=>v+1);}
   useEffect(()=>{const root=scroll.current;if(!root)return;const wheel=(e:WheelEvent)=>{if(layout!=='horizontal'||e.ctrlKey||e.metaKey)return;e.preventDefault();const amount=e.deltaMode===1?20:e.deltaMode===2?root.clientWidth:1;root.scrollLeft+=(Math.abs(e.deltaX)>0?e.deltaX:e.deltaY)*amount;};root.addEventListener('wheel',wheel,{passive:false});return ()=>root.removeEventListener('wheel',wheel);},[layout]);
   const effective=editableObjects(doc).sort(compareLayers);
-  const selection=effective.filter(o=>selected.includes(o.id));
+  const groups=groupState(doc);
+  const selection=effective.filter(o=>selected.includes(o.id)&&!groups.blocked.has(o.id));
   const selectionKey=selection.map(o=>o.id+':'+o.head).join('|');
   const draftVersion=useRef(selectionKey),applyingProperties=useRef(false);
   useEffect(()=>{
@@ -93,18 +102,19 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     if(gesture.current?.group&&!selectionIsCurrent(doc,gesture.current.group)){
       cancelGesture();setSearchStatus('選取物件收到其他修改，已取消尚未完成的移動，請重新操作。');
     }
-    setSelected(ids=>{const next=ids.filter(id=>effective.some(o=>o.id===id));return next.length===ids.length?ids:next;});
+    setSelected(ids=>{const next=ids.filter(id=>!groups.blocked.has(id)&&effective.some(o=>o.id===id));return next.length===ids.length?ids:next;});
     // Key the panel by viewed versions so remote updates discard stale inputs.
     if(doc.operations.some(o=>!lastLocalOperations.current.has(o.id))){setGroupAngle(0);rotationPivot.current=undefined;}
+    setObjectMenu(undefined);
   },[doc.operations]);
   function cancelGesture(){gesture.current?.straight?.cancel();setGeometryRevision(v=>v+1);setMoveHover(false);const old=gesture.current?.beforeSelection;if(old)setSelected(old.filter(id=>editableObjects(currentDoc.current).some(o=>o.id===id)));gesture.current=undefined;liveDraft.current=undefined;setDraft(undefined);setErased(new Set());setHover(undefined);setMarquee(undefined);setGroupDraft(new Map());groupPreview.current=new Map();}
   useEffect(()=>{cancelGesture();},[tool,selectionMode]);
-  useEffect(()=>{const cancel=()=>{placementEpoch.current++;cancelGesture();setPlacing(undefined);setLanding(undefined);setImageDragging(false);};window.addEventListener('blur',cancel);return ()=>{placementEpoch.current++;window.removeEventListener('blur',cancel);gesture.current?.straight?.cancel();clearTimeout(scrollTimer.current);};},[]);
+  useEffect(()=>{const cancel=()=>{setObjectMenu(undefined);placementEpoch.current++;cancelGesture();setPlacing(undefined);setLanding(undefined);setImageDragging(false);};window.addEventListener('blur',cancel);return ()=>{placementEpoch.current++;window.removeEventListener('blur',cancel);gesture.current?.straight?.cancel();clearTimeout(scrollTimer.current);};},[]);
   function clearSelection(){cancelGesture();setSelected([]);}
   async function deleteSelection(){const snapshot=selection;await commitGroup(selectionChanges(snapshot,()=>null));setSelected([]);}
   function fit(){
-    const root=scroll.current;if(!root||!view||loading||gesture.current||textRef.current||imageDragging)return;
-    const cover=narrow&&panelPresent?Math.min(root.clientWidth,panelContent.current?.getBoundingClientRect().width||0):0;
+    const root=scroll.current;if(!root||root.dataset.panelAnimating||!view||loading||gesture.current||textRef.current||imageDragging||pinch.current)return;
+    const cover=0;
     const next={...readerSpace(root.clientWidth,root.clientHeight,cover),cover};
     if(!next.width||!next.height)return;
     setSpace(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
@@ -116,10 +126,11 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const restoreRef=useRef(restore);restoreRef.current=restore;
   const fitRef=useRef(fit);fitRef.current=fit;
   useEffect(()=>{const root=scroll.current;if(!root)return;let frame=0;const observer=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{fitRef.current();});});observer.observe(root);return ()=>{observer.disconnect();cancelAnimationFrame(frame);};},[]);
-  useEffect(()=>{if(!gesture.current&&!textRef.current&&deferredView.current){const action=deferredView.current;deferredView.current=undefined;action();return;}fitRef.current();},[geometryRevision,zoomMode,page,views,loading,panelVisible,panelPresent,narrow,imageDragging,textDraft?.id]);
+  useEffect(()=>{if(!gesture.current&&!textRef.current&&deferredView.current){const action=deferredView.current;deferredView.current=undefined;action();return;}fitRef.current();},[geometryRevision,zoomMode,page,views,loading,imageDragging,textDraft?.id]);
   function scrolled(){if(restoring.current)return;clearTimeout(scrollTimer.current);scrollTimer.current=setTimeout(remember,zoomMode==='page'?180:60);}
   async function commitGroup(changes:EditRequest[],assets?:NoteDocument['assets'],gallery?:GalleryChange[]){
     if(!changes.length&&!assets&&!gallery?.length)return;if(workingRef.current)throw new Error('正在儲存，請稍候。');
+    changes=completeGroupBatch(currentDoc.current,changes);
     changes=changes.map(c=>c.value&&c.value.kind!=='document'&&!heads(currentDoc.current,c.id).length?{...c,value:{...c.value,layer:nextLayer(currentDoc.current,c.value.page)}}:c);
     workingRef.current=true;setWorking(true);
     try{const entries=changes.map(c=>({id:c.id,before:heads(currentDoc.current,c.id)[0]?.value??null,after:c.value,head:''}));const result=await onEditBatch(changes,assets,gallery);currentDoc.current=result;lastLocalOperations.current=new Set(result.operations.map(o=>o.id));
@@ -142,6 +153,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   useEffect(()=>{const key=(e:KeyboardEvent)=>{
     const target=e.target instanceof Element?e.target:null;
     const action=editorKeyAction(e.key,{modal:!!document.querySelector('dialog[open][data-modal="true"]'),control:!!target?.closest('button,a,summary,[role="button"]'),editable:!!target?.closest('input,textarea,select,[contenteditable="true"]'),command:e.ctrlKey||e.metaKey,shift:e.shiftKey});
+    if(objectMenu)return;
     if(!action||action==='delete'&&target?.closest('.context-panel')||action==='edit-text'&&(tool!=='select'||!selectedText(currentDoc.current,selection)))return;
     e.preventDefault();
     if(action==='undo'||action==='redo')confirmAction(()=>void history(action==='redo').catch(onError));
@@ -155,12 +167,14 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
       const [a,b]=clipped.map(p=>inverse(v.matrix,{x:p.x*v.width/r.width,y:p.y*v.height/r.height}));
       for(const obj of objects(currentDoc.current)){for(const version of obj.versions){const value=version.value;if(!value||value.kind==='document'||value.page!==n||!sweptHit(value,a,b,eraserSize/2))continue;
         if(obj.versions.length>1){setSearchStatus('範圍內有衝突筆跡；請先到衝突管理處理，橡皮擦會略過。');continue;}
-        if(!g.erasing.has(obj.id))g.erasing.set(obj.id,{id:obj.id,before:value,after:null,head:version.id});
+        const ids=expandGroups(currentDoc.current,[obj.id]);if(!ids.length){setSearchStatus('群組有衝突，橡皮擦已略過整組。');continue;}
+        for(const id of ids){const h=heads(currentDoc.current,id)[0];if(!g.erasing.has(id))g.erasing.set(id,{id,before:h.value,after:null,head:h.id});}
       }}
     }setErased(new Set(g.erasing.keys()));
   }
   function down(e:React.PointerEvent<SVGSVGElement>,number:number) {
-    if((tool==='read'&&!placing)||loading||workingRef.current||e.button!==0||gesture.current)return;
+    if(((tool==='read'||tool==='page')&&!placing)||loading||workingRef.current||e.button!==0||gesture.current)return;
+    touchInput.current=e.pointerType==='touch';
     if((manipulating||tool==='text'||!!placing)&&propertiesDirty){e.preventDefault();confirmAction(()=>setSearchStatus('已捨棄未套用屬性，請重新選取或拖曳物件。'));return;}
     if(textRef.current){const p=point(e,number);e.preventDefault();void finishText().then(ok=>{if(ok&&tool==='text')openText(undefined,number,p);});return;}
     e.preventDefault();e.currentTarget.focus();e.currentTarget.setPointerCapture(e.pointerId);const p=point(e,number);setPage(number);
@@ -169,10 +183,11 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     const handle=(e.target as Element).closest('[data-rotate]')?.getAttribute('data-rotate');
     const resizeHandle=(e.target as Element).closest('[data-resize]')?.getAttribute('data-resize') as Handle|undefined;
     if(manipulating){
-      const base={start:p,pointer:e.pointerId,page:number,clientStart:{x:e.clientX,y:e.clientY},beforeSelection:[...selected],clickTarget,shift:e.shiftKey};
+      const base={start:p,pointer:e.pointerId,page:number,clientStart:{x:e.clientX,y:e.clientY},beforeSelection:[...selected],clickTarget,shift:e.shiftKey,touch:e.pointerType==='touch'};
       const group=selection.filter(o=>o.value.page===number);
       if((handle||resizeHandle)&&group.length)gesture.current={...base,group,rotate:!!handle,resize:resizeHandle,frame:gestureFrame(group,!!handle)};
-      else if(clickTarget&&group.some(o=>o.id===clickTarget.id))gesture.current={...base,group};
+      else if(hitSelectionFrame(group,p))gesture.current={...base,group};
+      else if(e.pointerType==='touch'&&selection.length)return;
       else gesture.current={...base,selecting:selectionMode,selectionPoints:[p]};
     }
     else if(tool==='erase'){const client={x:e.clientX,y:e.clientY};gesture.current={start:p,pointer:e.pointerId,page:number,lastClient:client,erasing:new Map()};sweep(client,client);}
@@ -181,19 +196,19 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     if(gesture.current)gesture.current.rect=e.currentTarget.getBoundingClientRect();
   }
   function move(e:React.PointerEvent<SVGSVGElement>,number:number) {
-    if(manipulating&&!gesture.current)setMoveHover(selection.some(o=>o.value.page===number&&hitAnnotation(o.value,point(e,number),0)));
+    if(manipulating&&!gesture.current)setMoveHover(hitSelectionFrame(selection.filter(o=>o.value.page===number),point(e,number)));
     if(placing&&!gesture.current){const target=dropPoint({x:e.clientX,y:e.clientY});setLanding(target?{...target,hash:placing}:undefined);}
     if(tool==='erase'){const node=[...scroll.current!.querySelectorAll<HTMLElement>('.paper')].find(n=>{const r=n.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;});if(node){const n=Number(node.dataset.page),r=node.getBoundingClientRect(),v=views[n-1];setHover({page:n,point:inverse(v.matrix,{x:(e.clientX-r.left)*v.width/r.width,y:(e.clientY-r.top)*v.height/r.height})});}else setHover(undefined);}
     const g=gesture.current;if(!g||g.pointer!==e.pointerId)return;
     if(g.erasing){const client={x:e.clientX,y:e.clientY};sweep(g.lastClient!,client);g.lastClient=client;return;}
     let p=point(e,number);const v=views[g.page-1];if(!g.group)p={x:Math.max(0,Math.min(v.bounds[2]-v.bounds[0],p.x)),y:Math.max(0,Math.min(v.bounds[3]-v.bounds[1],p.y))};
     if(g.selecting){
-      g.dragged ||= Math.hypot(e.clientX-g.clientStart!.x,e.clientY-g.clientStart!.y)>=5;
+      g.dragged ||= Math.hypot(e.clientX-g.clientStart!.x,e.clientY-g.clientStart!.y)>=DRAG_SLOP;
       if(g.selecting==='box')g.selectionPoints=[g.start,{x:p.x,y:g.start.y},p,{x:g.start.x,y:p.y}];
       else {const ps=g.selectionPoints!,last=ps.at(-1)!;if(Math.hypot(p.x-last.x,p.y-last.y)*zoom>=2){ps.push(p);if(ps.length>512)g.selectionPoints=ps.filter((_,i)=>i%2===0||i===ps.length-1);}}
       if(g.dragged)setMarquee({page:g.page,points:g.selectionPoints!});return;
     }
-    if(g.group){if(Math.hypot(e.clientX-g.clientStart!.x,e.clientY-g.clientStart!.y)>=5)g.dragged=true;
+    if(g.group){if(Math.hypot(e.clientX-g.clientStart!.x,e.clientY-g.clientStart!.y)>=DRAG_SLOP)g.dragged=true;
       if(g.dragged){let values:Annotation[];
         if(g.rotate){const f=g.frame!,c={x:f.x+f.width/2,y:f.y+f.height/2};g.delta=(Math.atan2(p.y-c.y,p.x-c.x)-Math.atan2(g.start.y-c.y,g.start.x-c.x))*180/Math.PI;values=rotateGroup(g.group,g.delta,f);}
         else if(g.resize)values=resizeGroup(g.group,g.resize,p,g.frame);
@@ -205,7 +220,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     setDraft(liveDraft.current);
   }
   function applyClick(g:NonNullable<typeof gesture.current>){
-    setSelected(clickSelection(currentDoc.current,g.beforeSelection||[],g.clickTarget,!!g.shift));
+    setSelected(clickSelection(currentDoc.current,g.beforeSelection||[],g.clickTarget,!!g.shift,!!g.touch));
   }
   function up(e:React.PointerEvent<SVGSVGElement>,number:number) {
     const g=gesture.current;if(!g||g.pointer!==e.pointerId)return;move(e,number);g.straight?.cancel();setGeometryRevision(v=>v+1);
@@ -215,7 +230,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
       else if(!g.dragged)applyClick(g);else setSelected([]);
       gesture.current=undefined;setMarquee(undefined);return;
     }
-    if(g.group){if(!g.dragged&&!g.rotate&&!g.resize){gesture.current=undefined;if(!g.shift&&g.beforeSelection?.length===1&&g.clickTarget?.id===g.beforeSelection[0]&&g.clickTarget.value.kind==='text'&&tool==='select')confirmAction(()=>editSelectedText([g.clickTarget!],point(e,number)));else applyClick(g);return;}const changes=g.group.map(o=>({id:o.id,value:groupPreview.current.get(o.id)||o.value,expected:[o.head]}));gesture.current=undefined;
+    if(g.group){if(!g.dragged&&!g.rotate&&!g.resize){gesture.current=undefined;if(!g.shift&&g.beforeSelection?.length===1&&g.clickTarget?.id===g.beforeSelection[0]&&g.clickTarget.value.kind==='text'&&!g.clickTarget.value.group&&tool==='select')confirmAction(()=>editSelectedText([g.clickTarget!],point(e,number)));else applyClick(g);return;}const changes=g.group.map(o=>({id:o.id,value:groupPreview.current.get(o.id)||o.value,expected:[o.head]}));gesture.current=undefined;
       void (g.dragged?commitGroup(changes).then(()=>{if(g.rotate)setGroupAngle(a=>a+(g.delta||0));else if(rotationPivot.current){const old=g.group![0].value,next=changes[0].value,factor=next.width/old.width;rotationPivot.current={x:next.x+next.width/2+(rotationPivot.current.x-old.x-old.width/2)*factor,y:next.y+next.height/2+(rotationPivot.current.y-old.y-old.height/2)*factor};}}):Promise.resolve()).catch(onError).finally(()=>{setGroupDraft(new Map());groupPreview.current=new Map();});return;
     }
     const changes=g.erasing?[...g.erasing.values()].map(h=>({id:h.id,value:null,expected:[h.head]})):undefined;
@@ -234,6 +249,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   }
   function openText(id:string|undefined,number:number,p:Point){
     const object=[...editableObjects(currentDoc.current)].sort(compareLayers).reverse().find(o=>o.value.kind==='text'&&o.value.page===number&&(id?o.id===id:hitAnnotation(o.value,p,0)));
+    if(object?.value.group){setSearchStatus('請先解除群組，再編輯其中的文字。');return;}
     if(id&&!object){setSearchStatus('文字版本已改變，請重新選取。');return;}
     if(!object&&objects(currentDoc.current).some(o=>o.versions.length>1&&o.versions.some(h=>h.value?.kind==='text'&&h.value.page===number&&hitAnnotation(h.value,p)))){setSearchStatus('文字有衝突，請先處理版本。');return;}
     const value=object?.value||uprightTextAt(p,views[number-1].matrix,{kind:'text',page:number,x:p.x,y:p.y,width:240,height:140,writingMode:'horizontal-tb',fontSize:18,text:'',color,weight:1,opacity:1});
@@ -274,8 +290,34 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     if(phase==='up'){setLanding(undefined);if(target)confirmAction(()=>void placeImage(hash,target.page,target.point).catch(onError));}if(phase==='cancel'){setPlacing(undefined);setLanding(undefined);}
   }
   useEffect(()=>{const visible=galleryHashes(doc);if(placing&&!visible.includes(placing)||draggedImage.current&&!visible.includes(draggedImage.current)){placementEpoch.current++;draggedImage.current=undefined;setPlacing(undefined);setLanding(undefined);setImageDragging(false);}},[doc.galleryOps,doc.gallery,placing]);
-  function changeTool(next:Tool){confirmAction(()=>{const apply=()=>{placementEpoch.current++;cancelGesture();setPlacing(undefined);setLanding(undefined);setImageDragging(false);setTool(next);setPanel(next==='image'?'images':'properties');if(next==='image')setPanelOpen(true);};if(textRef.current)void finishText().then(ok=>{if(ok)apply();});else apply();});}
+  function changeTool(next:Tool){confirmAction(()=>{const apply=()=>{setObjectMenu(undefined);placementEpoch.current++;cancelGesture();setPlacing(undefined);setLanding(undefined);setImageDragging(false);setTool(next);setPanel(next==='image'?'images':'properties');if(next==='image'||next==='page'||narrow)setPanelOpen(true);};if(textRef.current)void finishText().then(ok=>{if(ok)apply();});else apply();});}
   async function changeLayer(action:LayerAction){await commitGroup(layerChanges(currentDoc.current,selection,action));}
+  function openObjectMenu(client:Point,touch:boolean,probe=false):boolean{
+    if(workingRef.current||textRef.current||propertiesDirty||!['select','image','read','page'].includes(tool))return false;
+    const target=dropPoint(client);if(!target)return false;
+    const current=editableObjects(currentDoc.current),existing=current.filter(o=>selected.includes(o.id)&&o.value.page===target.page);
+    const inside=hitSelectionFrame(existing,target.point);
+    if(touch&&selected.length&&!inside)return false;
+    const hit=[...current].sort(compareLayers).reverse().find(o=>o.value.page===target.page&&hitAnnotation(o.value,target.point,0));
+    const ids=inside?existing.map(o=>o.id):hit?expandGroups(currentDoc.current,[hit.id]):[];
+    if(!ids.length||ids.some(id=>groupState(currentDoc.current).blocked.has(id)))return false;
+    if(probe)return true;
+    cancelGesture();setSelected(ids);setObjectMenu({anchor:{left:client.x,top:client.y,width:0,height:0},snapshot:current.filter(o=>ids.includes(o.id))});return true;
+  }
+  async function groupCommand(ungroup=false,snapshot=selection){
+    if(!selectionIsCurrent(currentDoc.current,snapshot))throw new Error('選取版本已更新，請重新操作。');
+    await commitGroup(groupingChanges(currentDoc.current,snapshot.map(o=>o.id),ungroup));
+  }
+  function contextMenu(e:React.MouseEvent){
+    if((e.target as Element).closest('input,textarea,button,[contenteditable],[data-resize],[data-rotate]'))return;
+    if(openObjectMenu({x:e.clientX,y:e.clientY},touchInput.current))e.preventDefault();
+  }
+  function menuKey(e:React.KeyboardEvent){
+    if(e.key!=='ContextMenu'&&!(e.shiftKey&&e.key==='F10')||!selection.length||(e.target as Element).closest('input,textarea,button,[contenteditable]'))return;
+    const f=selectionFrame(selection),node=scroll.current?.querySelector<HTMLElement>('[data-page="'+f.page+'"]');if(!node)return;
+    const p=transform(views[f.page-1].matrix,{x:f.x+f.width/2,y:f.y+f.height/2}),r=node.getBoundingClientRect();
+    if(openObjectMenu({x:r.left+p.x,y:r.top+p.y},false)){e.preventDefault();e.stopPropagation();}
+  }
   function gestureFrame(group:SelectedObject[],rotating:boolean){const f=selectionFrame(group);if(!rotating||group.length===1)return f;rotationPivot.current ||= {x:f.x+f.width/2,y:f.y+f.height/2};return {...f,x:rotationPivot.current.x-f.width/2,y:rotationPivot.current.y-f.height/2};}
   async function turnSelection(angle:number){if(!selection.length||workingRef.current||!Number.isFinite(angle))return;angle=((angle%360)+360)%360;const delta=selection.length===1?angle-visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):angle-groupAngle;if(Math.abs(delta)<.00001)return;const values=rotateGroup(selection,selection.length===1?angle-visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):angle-groupAngle,gestureFrame(selection,true));await commitGroup(selection.map((o,i)=>({id:o.id,value:values[i],expected:[o.head]})));setGroupAngle(angle);}
   return <section className="editor">
@@ -286,19 +328,22 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
       zoomMode={zoomMode} onZoom={n=>changeView(()=>{setZoomMode('manual');setZoom(n);})} onFit={()=>changeView(()=>setZoomMode('width'))} onFitPage={()=>changeView(()=>setZoomMode('page'))} onRotate={()=>changeView(()=>setRotation(v=>(v+90)%360))}
       layout={layout} onLayout={value=>changeView(()=>setLayout(value))} query={query} onQuery={setQuery} onSearch={()=>search.step(1)} onPrevious={()=>search.step(-1)} searchSummary={search.summary}/>
     {searchStatus&&<div className="search-status" role="status">{searchStatus}<button onClick={()=>setSearchStatus('')}>關閉</button></div>}
-    <div data-panel-open={panelVisible} className={'editor-body'+(!panelPresent?' panel-collapsed':'')}>    <aside className={'context-panel properties'+(narrow?' narrow':'')+(panelPresent?' expanded':'')+(imageDragging?' dragging':'')} aria-label={panel==='images'?'圖片庫':'物件屬性'}>
-
-      <div id="context-content" ref={panelContent} className="context-content" hidden={!panelPresent} inert={!panelVisible}><header><h2>{panel==='images'?'圖片':'物件屬性'}</h2>{panel==='images'&&<button onClick={()=>changeTool('select')}>屬性</button>}</header>
-      <div hidden={panel!=='images'}><ImageGallery doc={doc} busy={working} onImport={insertImage} onRemove={hash=>changeMembership(hash,false)} onCutout={hash=>openCutout(hash)} onPick={hash=>{confirmAction(()=>{setPlacing(hash);});}} onDrag={imageDrag}/></div>
-      <div hidden={panel!=='properties'}>{textDraft?<><p>正在頁面編輯文字</p><button data-text-action disabled={working} onClick={()=>void finishText()}>完成文字</button><button data-text-action disabled={working} onClick={()=>updateText(undefined)}>取消編輯</button></>:<>
+    <div data-panel-open={panelVisible} className={'editor-body'+(!panelPresent?' panel-collapsed':'')}>
+    <ContextPanel open={panelVisible} narrow={narrow} contentRef={panelContent} readerRef={scroll} onToggle={()=>{if(!narrow)remember();setPanelOpen(v=>!v);}} onSettled={()=>setGeometryRevision(v=>v+1)}>
+      <header><h2>{tool==='page'?'頁面':panel==='images'?'圖片':'工具與物件'}</h2></header>
+      <div hidden={tool!=='page'}><PageSettings layout={layout} onLayout={value=>changeView(()=>setLayout(value))} zoom={zoom} onZoom={n=>changeView(()=>{setZoomMode('manual');setZoom(clampZoom(n));})} ready={!!view&&ready} zoomMode={zoomMode} onFit={()=>changeView(()=>setZoomMode('width'))} onFitPage={()=>changeView(()=>setZoomMode('page'))} onRotate={()=>changeView(()=>setRotation(v=>(v+90)%360))}/></div>
+      <div className="mobile-tool-options"><ToolOptions tool={tool} color={color} onColor={setColor} weight={weight} onWeight={setWeight} eraserSize={eraserSize} onEraser={setEraserSize} selectionMode={selectionMode} onSelectionMode={setSelectionMode}/></div>
+      <div hidden={panel!=='images'||tool==='page'}><ImageGallery doc={doc} busy={working} onImport={insertImage} onRemove={hash=>changeMembership(hash,false)} onCutout={hash=>openCutout(hash)} onPick={hash=>{confirmAction(()=>{setPlacing(hash);});}} onDrag={imageDrag}/></div>
+      <div hidden={panel!=='properties'||tool==='page'}>{textDraft?<><p>正在頁面編輯文字</p><button data-text-action disabled={working} onClick={()=>void finishText()}>完成文字</button><button data-text-action disabled={working} onClick={()=>updateText(undefined)}>取消編輯</button></>:<>
       {!!selection.length&&<div className="angle-control">{gesture.current?.rotate&&groupDraft.size>0&&<output aria-label="旋轉預覽">{Math.round((selection.length===1?visibleAngle(groupDraft.values().next().value!,views[selection[0].value.page-1].matrix):groupAngle+(gesture.current.delta||0))*10)/10}°</output>}<label>{selection.length>1?'相對選取起點角度':'旋轉角度'}<input disabled={working||propertiesDirty} aria-label="物件旋轉角度" type="text" inputMode="decimal" key={selectionKey+groupAngle} defaultValue={Math.round((selection.length===1&&views[selection[0].value.page-1]?visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):groupAngle)*10)/10} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} onBlur={e=>{const n=Number(e.target.value);if(e.target.value.trim()&&Number.isFinite(n))void turnSelection(n).catch(onError);}}/></label><button disabled={working||propertiesDirty} onClick={()=>void turnSelection(0).catch(onError)}>{selection.length>1?'回復群組起始方向':'水平 0°'}</button></div>}
+      {!!selection.length&&<div className="group-actions"><Button disabled={working||selection.length<2||!!selection[0].value.group&&selection.every(o=>o.value.group?.id===selection[0].value.group?.id)} onClick={()=>confirmAction(()=>void groupCommand().catch(onError))}>建立群組</Button><Button disabled={working||!selection.some(o=>o.value.group)} onClick={()=>confirmAction(()=>void groupCommand(true).catch(onError))}>解除群組</Button></div>}
       {!!selection.length&&<div className="layer-actions" role="group" aria-label="物件圖層">{(Object.keys(layerLabels) as LayerAction[]).map(action=><button key={action} disabled={working||!layerChanges(doc,selection,action).length} onClick={()=>confirmAction(()=>void changeLayer(action).catch(onError))}>{layerLabels[action]}</button>)}</div>}
       {selection.length===1&&selection[0].value.kind==='image'&&<button disabled={working} onClick={()=>openCutout(selection[0].value.asset!,selection[0])}>去背此圖片</button>}
       <PropertiesPanel key={selectionKey+':'+panelRevision} selection={selection} working={working} onDirty={setPropertiesDirty} onCommit={changes=>{applyingProperties.current=true;return commitGroup(changes).catch(error=>{applyingProperties.current=false;throw error;});}} onDelete={()=>confirmAction(()=>void deleteSelection().catch(onError))} onError={onError}/></>}
-      </div></div>
-    </aside>      <button data-panel-toggle className="panel-toggle" aria-label={panelOpen?'收合側面板':'展開側面板'} aria-controls="context-content" aria-expanded={panelOpen} onPointerDown={e=>{if(textRef.current)e.preventDefault();}} onClick={()=>{remember();if(panelContent.current?.contains(document.activeElement))document.querySelector<HTMLButtonElement>('[data-panel-toggle]')?.focus();setPanelOpen(v=>!v);}}>{panelOpen?'‹':'›'}</button><div ref={scroll} className={'page-scroll '+layout} style={{'--reader-pad-x':space.padX+'px','--reader-pad-y':space.padY+'px','--panel-cover':space.cover+'px'} as React.CSSProperties} onScroll={scrolled}><div className="page-stack" style={zoomMode==='page'?{paddingBlock:layout==='vertical'?Math.max(0,(space.height-(view?.height||0))/2):0,paddingLeft:layout==='horizontal'?Math.max(0,(space.width-(view?.width||0))/2)+space.cover:0,paddingRight:layout==='horizontal'?Math.max(0,(space.width-(view?.width||0))/2):0}:undefined}>
-      {reader&&views.map((v,i)=>{const n=i+1;return <ReaderPage key={n} reader={reader} number={n} view={v} zoom={zoom} read={tool==='read'&&!placing&&!imageDragging} hits={search.hits.filter(h=>h.page===n)} currentHit={search.currentHit} pinned={gesture.current?.page===n||textDraft?.value.page===n||search.currentHit?.page===n||selection.some(o=>o.value.page===n)}>
-        <svg tabIndex={0} className="annotation-layer" aria-label={n===page?'註記畫布':'第 '+n+' 頁註記畫布'} width={v.width} height={v.height} style={{pointerEvents:tool==='read'&&!placing?'none':'auto',touchAction:tool==='read'&&!placing?'auto':'none',cursor:tool==='pen'||tool==='highlight'?'crosshair':tool==='erase'?'none':tool==='text'?'text':manipulating&&moveHover?'move':'default'}} onContextMenu={e=>{if(tool==='pen'||tool==='highlight')e.preventDefault();}} onPointerDown={e=>down(e,n)} onPointerMove={e=>move(e,n)} onPointerUp={e=>up(e,n)} onPointerCancel={cancelGesture} onLostPointerCapture={e=>{if(gesture.current?.pointer===e.pointerId)cancelGesture();}} onPointerLeave={()=>{if(!gesture.current)setHover(undefined);}}>
+      </div>
+    </ContextPanel><div ref={scroll} tabIndex={0} aria-label="文件閱讀區" className={'page-scroll '+layout} style={{'--reader-pad-x':space.padX+'px','--reader-pad-y':space.padY+'px','--panel-cover':space.cover+'px'} as React.CSSProperties} onPointerDownCapture={e=>{touchInput.current=e.pointerType==='touch';}} onContextMenu={contextMenu} onKeyDown={menuKey} onScroll={()=>{scrolled();setObjectMenu(undefined);}}><div className="page-stack" style={zoomMode==='page'?{paddingBlock:layout==='vertical'?Math.max(0,(space.height-(view?.height||0))/2):0,paddingLeft:layout==='horizontal'?Math.max(0,(space.width-(view?.width||0))/2)+space.cover:0,paddingRight:layout==='horizontal'?Math.max(0,(space.width-(view?.width||0))/2):0}:undefined}>
+      {reader&&views.map((v,i)=>{const n=i+1;return <ReaderPage key={n} reader={reader} number={n} view={v} zoom={v.scale||zoom} read={(tool==='read'||tool==='page')&&!placing&&!imageDragging} hits={search.hits.filter(h=>h.page===n)} currentHit={search.currentHit} pinned={gesture.current?.page===n||textDraft?.value.page===n||search.currentHit?.page===n||selection.some(o=>o.value.page===n)}>
+        <svg tabIndex={0} className="annotation-layer" aria-label={n===page?'註記畫布':'第 '+n+' 頁註記畫布'} width={v.width} height={v.height} style={{pointerEvents:(tool==='read'||tool==='page')&&!placing?'none':'auto',touchAction:'none',cursor:tool==='pen'||tool==='highlight'?'crosshair':tool==='erase'?'none':tool==='text'?'text':manipulating&&moveHover?'move':'default'}} onContextMenu={e=>{if(tool==='pen'||tool==='highlight')e.preventDefault();}} onPointerDown={e=>down(e,n)} onPointerMove={e=>move(e,n)} onPointerUp={e=>up(e,n)} onPointerCancel={cancelGesture} onLostPointerCapture={e=>{if(gesture.current?.pointer===e.pointerId)cancelGesture();}} onPointerLeave={()=>{if(!gesture.current)setHover(undefined);}}>
           <g transform={`matrix(${v.matrix.join(' ')})`}>{effective.filter(o=>o.value.page===n&&!erased.has(o.id)&&o.id!==textDraft?.id).map(({id,value})=>{const a=groupDraft.get(id)||value;return <g key={id} data-object={id}><AnnotationShape value={a} doc={doc}/></g>;})}{draft&&draft.page===n&&<AnnotationShape value={draft} doc={doc}/>} {manipulating&&marquee?.page===n&&<path className="selection-marquee" d={marquee.points.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' ')+' Z'} fill="#1b776922" fillRule="evenodd" stroke="#1b7769" strokeWidth={1/zoom} strokeDasharray={`${5/zoom} ${3/zoom}`} pointerEvents="none"/>}
             {manipulating&&!textDraft&&<SelectionControls selection={selection.filter(o=>o.value.page===n).map(o=>({...o,value:groupDraft.get(o.id)||o.value}))} zoom={zoom} matrix={v.matrix}/>}
             {landing?.page===n&&<ImageDropPreview doc={doc} hash={landing.hash} page={n} point={landing.point} matrix={v.matrix} width={Math.min(240,(v.bounds[2]-v.bounds[0])*.7)}/>}
@@ -308,7 +353,10 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
       </ReaderPage>;})}{loading&&<p role="status">正在準備連續頁面…</p>}
     </div></div>
 
-    </div><footer className="reader-footer"><span>{tool==='read'?'閱讀模式 · 可捲動、縮放與選取文字':'編輯模式 · 單指／滑鼠操作，切換「閱讀」即可捲動'}</span><span>{effective.filter(o=>o.value.page===page).length} 個物件 · 第 {page} 頁</span></footer>
+    {!!selection.length&&<Button className="clear-selection" disabled={working} onClick={()=>confirmAction(clearSelection)}>取消選取（{selection.length}）</Button>}
+    </div><footer className="reader-footer"><span>{tool==='read'||tool==='page'?'閱讀 · 單指捲動、雙指縮放、空白文字長按選取':'編輯模式 · 單指／滑鼠操作，切換「閱讀」即可捲動'}</span><span>{effective.filter(o=>o.value.page===page).length} 個物件 · 第 {page} 頁</span></footer>
+    {groups.issues.length>0&&<p className="group-warning" role="status">有 {groups.issues.length} 個群組關係待處理；請返回文件庫的「衝突管理」。</p>}
+    <ActionMenu triggerless label="物件操作" anchor={objectMenu?.anchor} returnFocus={scroll.current} onClose={()=>setObjectMenu(undefined)}>{objectMenu&&<><Button disabled={working||objectMenu.snapshot.length<2||!!objectMenu.snapshot[0].value.group&&objectMenu.snapshot.every(o=>o.value.group?.id===objectMenu.snapshot[0].value.group?.id)} onClick={()=>confirmAction(()=>void groupCommand(false,objectMenu.snapshot).catch(onError))}>建立群組</Button><Button disabled={working||!objectMenu.snapshot.some(o=>o.value.group)} onClick={()=>confirmAction(()=>void groupCommand(true,objectMenu.snapshot).catch(onError))}>解除群組</Button><Button variant="danger" disabled={working} onClick={()=>confirmAction(()=>void commitGroup(selectionChanges(objectMenu.snapshot,()=>null)).then(()=>setSelected([])).catch(onError))}>刪除</Button><Button onClick={()=>confirmAction(clearSelection)}>取消選取</Button></>}</ActionMenu>
     {placing&&<div className="placement-notice" role="status">點頁面放置圖片<button onClick={()=>{placementEpoch.current++;setPlacing(undefined);setLanding(undefined);}}>取消放置</button></div>}
     {textDraft?.error&&<div className="text-rescue" role="alert"><p>{textDraft.error}</p><textarea aria-label="未保存文字救援" readOnly value={textDraft.value.text}/><button data-text-action onClick={()=>void finishText()}>重試保存</button><button data-text-action onClick={()=>updateText(undefined)}>取消編輯</button></div>}
     {cutout&&doc.assets[cutout.hash]&&<ImageCutout asset={doc.assets[cutout.hash]} instance={!!cutout.object} onApply={applyCutout} onClose={()=>setCutout(undefined)}/>}
