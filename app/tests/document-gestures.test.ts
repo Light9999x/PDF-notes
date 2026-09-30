@@ -18,7 +18,7 @@ let cleanup:(()=>void)[]=[],root:Surface,win:Surface,options:Parameters<typeof u
 function fire(type:string,id:number,x:number,y:number,target=root){const event=new Event(type,{cancelable:true});Object.assign(event,{pointerId:id,pointerType:'touch',clientX:x,clientY:y});target.dispatchEvent(event);return event;}
 beforeEach(()=>{
   vi.useFakeTimers();harness.effects=[];root=new Surface();root.stack=new Surface();const page=new Surface();page.dataset.page='2';root.pages=[page];win=new Surface();
-  vi.stubGlobal('window',Object.assign(win,{getSelection:()=>({isCollapsed:true,removeAllRanges:vi.fn()})}));vi.stubGlobal('Element',Surface);
+  vi.stubGlobal('window',Object.assign(win,{getSelection:()=>({isCollapsed:true,removeAllRanges:vi.fn()})}));vi.stubGlobal('Element',Surface);vi.stubGlobal('getComputedStyle',()=>({gap:'8px',flexDirection:'column'}));
   options={zoom:1,tool:'select',read:false,disabled:false,cancel:vi.fn(),onZoom:vi.fn(),menu:vi.fn(()=>true),onActivity:vi.fn()};
 });
 function mount(){const active=useDocumentGestures({current:root as unknown as HTMLDivElement},options);cleanup=harness.effects.map(f=>f()).filter((f):f is ()=>void=>!!f);vi.mocked(options.cancel).mockClear();return active;}

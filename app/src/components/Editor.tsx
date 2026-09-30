@@ -1,3 +1,6 @@
+import { COMPACT_READER_QUERY, LANDSCAPE_QUERY, PAGE_GAP } from '../core/reader-layout';
+import { pageGeometry, pageViews, type PageGeometry } from '../core/page-geometry';
+import { RenderCoordinator } from '../core/render-coordinator';
 import { completeGroupBatch, expandGroups, groupingChanges, groupState } from '../core/groups';
 import { useDocumentGestures, type PinchAnchor } from './useDocumentGestures';
 import { clampZoom, DRAG_SLOP } from '../core/document-gesture';
@@ -19,13 +22,13 @@ import { resizeGroup, rotateGroup, selectionFrame, hitSelectionFrame, uprightAt,
 import { EditorToolbar, ToolOptions, PageSettings, type Tool } from './EditorToolbar';
 import { ActionMenu, Button, Dialog, useMedia } from './ui';
 import { editorKeyAction } from '../core/ui-policy';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addAsset, heads, nameOf, objects, uid, type EditRequest, type Annotation, type NoteDocument, type Point, type Value } from '../core/model';
 import { loadPdf } from '../core/pdf';
-import { clipSegment, sweptHit, inverse, pageMatrix, annotationMatrix, transform } from '../core/geometry';
+import { clipSegment, sweptHit, inverse, annotationMatrix, transform } from '../core/geometry';
 import { editableObjects, hitAnnotation, makeRegion, selectRegion, selectionChanges, selectionIsCurrent, validRegion, type SelectedObject } from '../core/selection';
 import { PropertiesPanel } from './PropertiesPanel';
-import { ReaderPage, type PageView } from './ReaderPage';
+import { ReaderPage } from './ReaderPage';
 import { AnnotationShape } from './AnnotationShape';
 import { store } from '../core/storage';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -33,7 +36,9 @@ type Props={doc:NoteDocument;onBack:()=>void;onEditBatch:(changes:EditRequest[],
 type History={id:string;before:Value;after:Value;head:string};
 export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const [cutout,setCutout]=useState<{hash:string;object?:SelectedObject}>();
-  const narrow=useMedia('(max-width: 600px)');
+  const narrow=useMedia(COMPACT_READER_QUERY),landscape=useMedia(LANDSCAPE_QUERY);
+  const coordinator=useMemo(()=>new RenderCoordinator(),[doc.id,doc.pdfHash]);
+  useEffect(()=>()=>coordinator.dispose(),[coordinator]);
   const [propertiesDirty,setPropertiesDirty]=useState(false),[panelRevision,setPanelRevision]=useState(0);
   const [pendingAction,setPendingAction]=useState<(()=>void)>();
   function confirmAction(action:()=>void){if(propertiesDirty)setPendingAction(()=>action);else action();}
@@ -44,7 +49,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const [loading,setLoading]=useState(true);const [query,setQuery]=useState('');const [searchStatus,setSearchStatus]=useState('');
   const [undo,setUndo]=useState<History[][]>([]),[redo,setRedo]=useState<History[][]>([]);const [textDraft,setTextDraft]=useState<TextDraft>();const textRef=useRef<TextDraft|undefined>(undefined);const textSaving=useRef<Promise<boolean>|undefined>(undefined);
   const [panel,setPanel]=useState<'properties'|'images'>('properties'),[placing,setPlacing]=useState<string>(),[landing,setLanding]=useState<{page:number;point:Point;hash:string}>(),[imageDragging,setImageDragging]=useState(false),[groupAngle,setGroupAngle]=useState(0);const groupPreview=useRef(new Map<string,Annotation>());const composing=useRef(false);const rotationPivot=useRef<Point|undefined>(undefined);
-  const [ready,setReady]=useState(false);const [layout,setLayout]=useState<'vertical'|'horizontal'>('vertical');const [views,setViews]=useState<PageView[]>([]);const pendingAnchor=useRef<{page:number;x:number;y:number}>({page:1,x:0,y:0});const restoring=useRef(true);const legacyScroll=useRef<number|null>(null);const [eraserSize,setEraserSize]=useState(24);const [hover,setHover]=useState<{page:number;point:Point}>();const [erased,setErased]=useState<Set<string>>(new Set());const [working,setWorking]=useState(false);const workingRef=useRef(false);
+  const [ready,setReady]=useState(false);const [layout,setLayout]=useState<'vertical'|'horizontal'>('vertical');const [geometry,setGeometry]=useState<PageGeometry[]>([]);const views=useMemo(()=>pageViews(geometry,zoom,rotation),[geometry,zoom,rotation]);const [loadError,setLoadError]=useState(''),[loadAttempt,setLoadAttempt]=useState(0);const pendingAnchor=useRef<{page:number;x:number;y:number}>({page:1,x:0,y:0});const restoring=useRef(true);const legacyScroll=useRef<number|null>(null);const [eraserSize,setEraserSize]=useState(24);const [hover,setHover]=useState<{page:number;point:Point}>();const [erased,setErased]=useState<Set<string>>(new Set());const [working,setWorking]=useState(false);const workingRef=useRef(false);
   const placementEpoch=useRef(0),draggedImage=useRef<string|undefined>(undefined);
   const scroll=useRef<HTMLDivElement>(null),panelContent=useRef<HTMLDivElement>(null);
   const deferredView=useRef<(()=>void)|undefined>(undefined),scrollTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -57,21 +62,16 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   const manipulating=tool==='select'||tool==='image';
   const gesture=useRef<{start:Point;rect?:{left:number;top:number;width:number;height:number};points?:Point[];straight?:StraightStroke;pointer:number;page:number;rotate?:boolean;resize?:Handle;frame?:Annotation;delta?:number;lastClient?:Point;erasing?:Map<string,History>;selecting?:'box'|'lasso';selectionPoints?:Point[];dragged?:boolean;clientStart?:Point;group?:SelectedObject[];beforeSelection?:string[];clickTarget?:SelectedObject;shift?:boolean;touch?:boolean}|undefined>(undefined);
   const liveDraft=useRef<Annotation|undefined>(undefined);const lastLocalOperations=useRef(new Set<string>());const currentDoc=useRef(doc);currentDoc.current=doc;
-  useEffect(()=>{let disposed=false;let pdf:PDFDocumentProxy|undefined;setReady(false);setLoading(true);setPanelOpen(true);
-    void Promise.all([loadPdf(doc.assets[doc.pdfHash].bytes),store.setting<any>('position:'+doc.id,{}),store.setting<any>('tools',{weight:3,eraserSize:24})]).then(([p,pos,settings])=>{
-      pdf=p;if(disposed){void p.loadingTask.destroy();return;}
+  useEffect(()=>{let disposed=false;let pdf:PDFDocumentProxy|undefined;setReady(false);setLoading(true);setLoadError('');setGeometry([]);
+    void Promise.all([loadPdf(doc.assets[doc.pdfHash].bytes).then(async loaded=>{pdf=loaded;if(disposed){await loaded.loadingTask.destroy();throw new Error('文件已關閉');}return {pdf:loaded,geometry:await pageGeometry(loaded)};}),store.setting<any>('position:'+doc.id,{}),store.setting<any>('tools',{weight:3,eraserSize:24})]).then(([loaded,pos,settings])=>{
+      const p=loaded.pdf;pdf=p;if(disposed){void p.loadingTask.destroy();return;}
       const pg=Math.max(1,Math.min(p.numPages,Math.floor(Number(pos.page)||1)));
       setZoomMode(['width','page'].includes(pos.zoomMode)?pos.zoomMode:'manual');setPage(pg);setZoom(Math.max(.25,Math.min(4,Number(pos.zoom)||1)));setRotation([0,90,180,270].includes(pos.rotation)?pos.rotation:0);setLayout(pos.layout==='horizontal'?'horizontal':'vertical');
       pendingAnchor.current={page:pg,x:Number(pos.anchor?.x)||0,y:Number(pos.anchor?.y)||0};legacyScroll.current=pos.anchor?null:typeof pos.scroll==='number'&&Number.isFinite(pos.scroll)?pos.scroll:null;
-      setPrefs(readToolPreferences(settings));setEraserSize(Math.max(2,Math.min(200,Number(settings.eraserSize)||24)));setReader(p);setReady(true);
-    }).catch(onError);return ()=>{disposed=true;void pdf?.loadingTask.destroy();};
-  },[doc.id,doc.pdfHash]);
+      setPrefs(readToolPreferences(settings));setEraserSize(Math.max(2,Math.min(200,Number(settings.eraserSize)||24)));setReader(p);setGeometry(loaded.geometry);setLoading(false);setReady(true);
+    }).catch(error=>{if(!disposed){disposed=true;void pdf?.loadingTask.destroy();setLoading(false);setLoadError(String(error));onError(error);}});return ()=>{disposed=true;void pdf?.loadingTask.destroy();};
+  },[doc.id,doc.pdfHash,loadAttempt]);
   useEffect(()=>{if(ready)void store.set('tools',{version:2,prefs,eraserSize}).catch(onError);},[prefs,eraserSize,ready]);
-  useEffect(()=>{if(!reader)return;let disposed=false;setLoading(true);
-    void (async()=>{const next:PageView[]=[];for(let n=1;n<=reader.numPages;n++){const p=await reader.getPage(n);if(disposed)return;const viewport=p.getViewport({scale:zoom,rotation:(p.rotate+rotation)%360});next.push({width:viewport.width,height:viewport.height,scale:zoom,matrix:pageMatrix(viewport.transform,p.view),bounds:p.view,rotation:viewport.rotation});}
-      if(!disposed){setViews(next);setLoading(false);}
-    })().catch(onError);return ()=>{disposed=true;};
-  },[reader,zoom,rotation]);
   const view=views[page-1];
   const search=usePdfSearch(reader,query,goPage);
   useEffect(()=>{setGroupAngle(0);rotationPivot.current=undefined;if(selected.length&&tool!=='image')setPanel('properties');},[selected.join('|')]);
@@ -83,7 +83,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     void store.set('position:'+doc.id,{page:best,zoom,zoomMode,rotation,layout,anchor:{x:anchor.x,y:anchor.y}}).catch(onError);
   }
   function restore(){const root=scroll.current,a=pendingAnchor.current;if(!root||root.dataset.panelAnimating||gesture.current||textRef.current||imageDragging||pinch.current)return;const pin=pinchAnchor.current;if(pin){if(views[pin.page-1]?.scale!==zoom)return;const node=root.querySelector<HTMLElement>('[data-page="'+pin.page+'"]');if(node){const b=node.getBoundingClientRect();root.scrollLeft+=b.left+pin.x*b.width-pin.client.x;root.scrollTop+=b.top+pin.y*b.height-pin.client.y;setPage(pin.page);pinchAnchor.current=undefined;restoring.current=false;remember();}return;}const node=root.querySelector<HTMLElement>('[data-page="'+a.page+'"]');if(!node)return;const r=root.getBoundingClientRect(),b=node.getBoundingClientRect();if(legacyScroll.current!==null){a.y=(legacyScroll.current-parseFloat(getComputedStyle(root).paddingTop))/b.height;legacyScroll.current=null;}if(zoomMode==='page'){root.scrollLeft+=b.left-r.left-space.left-(space.visibleWidth-b.width)/2;root.scrollTop+=b.top-r.top-(root.clientHeight-b.height)/2;}else{root.scrollLeft+=b.left-r.left-space.left+a.x*b.width;root.scrollTop+=b.top-r.top+a.y*b.height;}setPage(a.page);restoring.current=false;remember();}
-  useEffect(()=>{if(!views.length||loading)return;restoring.current=true;const frame=requestAnimationFrame(restore);return ()=>cancelAnimationFrame(frame);},[views,layout,loading]);
+  useLayoutEffect(()=>{if(!views.length||loading)return;restoring.current=true;restore();},[views,layout,loading,geometryRevision]);
   function goPage(n:number){if(textRef.current||gesture.current){deferredView.current=()=>goPage(n);return;}pendingAnchor.current={page:n,x:0,y:0};restoring.current=true;setPage(n);setGeometryRevision(v=>v+1);requestAnimationFrame(()=>restoreRef.current());}
   function changeView(action:()=>void){if(textRef.current||gesture.current){deferredView.current=()=>changeView(action);return;}remember();restoring.current=true;action();setGeometryRevision(v=>v+1);}
   useEffect(()=>{const root=scroll.current;if(!root)return;const wheel=(e:WheelEvent)=>{if(layout!=='horizontal'||e.ctrlKey||e.metaKey)return;e.preventDefault();const amount=e.deltaMode===1?20:e.deltaMode===2?root.clientWidth:1;root.scrollLeft+=(Math.abs(e.deltaX)>0?e.deltaX:e.deltaY)*amount;};root.addEventListener('wheel',wheel,{passive:false});return ()=>root.removeEventListener('wheel',wheel);},[layout]);
@@ -320,8 +320,8 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
   }
   function gestureFrame(group:SelectedObject[],rotating:boolean){const f=selectionFrame(group);if(!rotating||group.length===1)return f;rotationPivot.current ||= {x:f.x+f.width/2,y:f.y+f.height/2};return {...f,x:rotationPivot.current.x-f.width/2,y:rotationPivot.current.y-f.height/2};}
   async function turnSelection(angle:number){if(!selection.length||workingRef.current||!Number.isFinite(angle))return;angle=((angle%360)+360)%360;const delta=selection.length===1?angle-visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):angle-groupAngle;if(Math.abs(delta)<.00001)return;const values=rotateGroup(selection,selection.length===1?angle-visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):angle-groupAngle,gestureFrame(selection,true));await commitGroup(selection.map((o,i)=>({id:o.id,value:values[i],expected:[o.head]})));setGroupAngle(angle);}
-  return <section className="editor">
-    <EditorToolbar name={nameOf(doc)} status={status} tool={tool} onTool={changeTool} color={color} onColor={setColor} weight={weight} onWeight={setWeight} eraserSize={eraserSize} onEraser={setEraserSize}
+  return <section className="editor" data-compact={narrow} data-landscape={narrow&&landscape} style={{'--page-gap':(narrow?PAGE_GAP.compact:PAGE_GAP.desktop)+'px'} as React.CSSProperties}>
+    <EditorToolbar landscape={narrow&&landscape} name={nameOf(doc)} status={status} tool={tool} onTool={changeTool} color={color} onColor={setColor} weight={weight} onWeight={setWeight} eraserSize={eraserSize} onEraser={setEraserSize}
       onBack={()=>{if(textRef.current)void finishText().then(ok=>{if(ok)confirmAction(onBack);});else confirmAction(onBack);}} onExport={kind=>{if(textRef.current)void finishText().then(ok=>{if(ok)onExport(kind);});else onExport(kind);}} onImage={()=>changeTool('image')} ready={!!view&&ready} working={working} canUndo={!!undo.length&&!textDraft} canRedo={!!redo.length&&!textDraft}
       onUndo={()=>confirmAction(()=>void history(false).catch(onError))} onRedo={()=>confirmAction(()=>void history(true).catch(onError))} selectionMode={selectionMode} onSelectionMode={setSelectionMode}
       dirty={propertiesDirty||!!textDraft} page={page} pages={doc.pageCount} onPage={goPage} zoom={zoom}
@@ -332,7 +332,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
     <ContextPanel open={panelVisible} narrow={narrow} contentRef={panelContent} readerRef={scroll} onToggle={()=>{if(!narrow)remember();setPanelOpen(v=>!v);}} onSettled={()=>setGeometryRevision(v=>v+1)}>
       <header><h2>{tool==='page'?'頁面':panel==='images'?'圖片':'工具與物件'}</h2></header>
       <div hidden={tool!=='page'}><PageSettings layout={layout} onLayout={value=>changeView(()=>setLayout(value))} zoom={zoom} onZoom={n=>changeView(()=>{setZoomMode('manual');setZoom(clampZoom(n));})} ready={!!view&&ready} zoomMode={zoomMode} onFit={()=>changeView(()=>setZoomMode('width'))} onFitPage={()=>changeView(()=>setZoomMode('page'))} onRotate={()=>changeView(()=>setRotation(v=>(v+90)%360))}/></div>
-      <div className="mobile-tool-options"><ToolOptions tool={tool} color={color} onColor={setColor} weight={weight} onWeight={setWeight} eraserSize={eraserSize} onEraser={setEraserSize} selectionMode={selectionMode} onSelectionMode={setSelectionMode}/></div>
+      <div className="panel-tool-options"><ToolOptions tool={tool} color={color} onColor={setColor} weight={weight} onWeight={setWeight} eraserSize={eraserSize} onEraser={setEraserSize} selectionMode={selectionMode} onSelectionMode={setSelectionMode}/></div>
       <div hidden={panel!=='images'||tool==='page'}><ImageGallery doc={doc} busy={working} onImport={insertImage} onRemove={hash=>changeMembership(hash,false)} onCutout={hash=>openCutout(hash)} onPick={hash=>{confirmAction(()=>{setPlacing(hash);});}} onDrag={imageDrag}/></div>
       <div hidden={panel!=='properties'||tool==='page'}>{textDraft?<><p>正在頁面編輯文字</p><button data-text-action disabled={working} onClick={()=>void finishText()}>完成文字</button><button data-text-action disabled={working} onClick={()=>updateText(undefined)}>取消編輯</button></>:<>
       {!!selection.length&&<div className="angle-control">{gesture.current?.rotate&&groupDraft.size>0&&<output aria-label="旋轉預覽">{Math.round((selection.length===1?visibleAngle(groupDraft.values().next().value!,views[selection[0].value.page-1].matrix):groupAngle+(gesture.current.delta||0))*10)/10}°</output>}<label>{selection.length>1?'相對選取起點角度':'旋轉角度'}<input disabled={working||propertiesDirty} aria-label="物件旋轉角度" type="text" inputMode="decimal" key={selectionKey+groupAngle} defaultValue={Math.round((selection.length===1&&views[selection[0].value.page-1]?visibleAngle(selection[0].value,views[selection[0].value.page-1].matrix):groupAngle)*10)/10} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} onBlur={e=>{const n=Number(e.target.value);if(e.target.value.trim()&&Number.isFinite(n))void turnSelection(n).catch(onError);}}/></label><button disabled={working||propertiesDirty} onClick={()=>void turnSelection(0).catch(onError)}>{selection.length>1?'回復群組起始方向':'水平 0°'}</button></div>}
@@ -342,7 +342,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
       <PropertiesPanel key={selectionKey+':'+panelRevision} selection={selection} working={working} onDirty={setPropertiesDirty} onCommit={changes=>{applyingProperties.current=true;return commitGroup(changes).catch(error=>{applyingProperties.current=false;throw error;});}} onDelete={()=>confirmAction(()=>void deleteSelection().catch(onError))} onError={onError}/></>}
       </div>
     </ContextPanel><div ref={scroll} tabIndex={0} aria-label="文件閱讀區" className={'page-scroll '+layout} style={{'--reader-pad-x':space.padX+'px','--reader-pad-y':space.padY+'px','--panel-cover':space.cover+'px'} as React.CSSProperties} onPointerDownCapture={e=>{touchInput.current=e.pointerType==='touch';}} onContextMenu={contextMenu} onKeyDown={menuKey} onScroll={()=>{scrolled();setObjectMenu(undefined);}}><div className="page-stack" style={zoomMode==='page'?{paddingBlock:layout==='vertical'?Math.max(0,(space.height-(view?.height||0))/2):0,paddingLeft:layout==='horizontal'?Math.max(0,(space.width-(view?.width||0))/2)+space.cover:0,paddingRight:layout==='horizontal'?Math.max(0,(space.width-(view?.width||0))/2):0}:undefined}>
-      {reader&&views.map((v,i)=>{const n=i+1;return <ReaderPage key={n} reader={reader} number={n} view={v} zoom={v.scale||zoom} read={(tool==='read'||tool==='page')&&!placing&&!imageDragging} hits={search.hits.filter(h=>h.page===n)} currentHit={search.currentHit} pinned={gesture.current?.page===n||textDraft?.value.page===n||search.currentHit?.page===n||selection.some(o=>o.value.page===n)}>
+      {reader&&views.map((v,i)=>{const n=i+1;return <ReaderPage key={n} coordinator={coordinator} reader={reader} number={n} view={v} zoom={v.scale||zoom} read={(tool==='read'||tool==='page')&&!placing&&!imageDragging} hits={search.hits.filter(h=>h.page===n)} currentHit={search.currentHit} pinned={gesture.current?.page===n||textDraft?.value.page===n||search.currentHit?.page===n||selection.some(o=>o.value.page===n)}>
         <svg tabIndex={0} className="annotation-layer" aria-label={n===page?'註記畫布':'第 '+n+' 頁註記畫布'} width={v.width} height={v.height} style={{pointerEvents:(tool==='read'||tool==='page')&&!placing?'none':'auto',touchAction:'none',cursor:tool==='pen'||tool==='highlight'?'crosshair':tool==='erase'?'none':tool==='text'?'text':manipulating&&moveHover?'move':'default'}} onContextMenu={e=>{if(tool==='pen'||tool==='highlight')e.preventDefault();}} onPointerDown={e=>down(e,n)} onPointerMove={e=>move(e,n)} onPointerUp={e=>up(e,n)} onPointerCancel={cancelGesture} onLostPointerCapture={e=>{if(gesture.current?.pointer===e.pointerId)cancelGesture();}} onPointerLeave={()=>{if(!gesture.current)setHover(undefined);}}>
           <g transform={`matrix(${v.matrix.join(' ')})`}>{effective.filter(o=>o.value.page===n&&!erased.has(o.id)&&o.id!==textDraft?.id).map(({id,value})=>{const a=groupDraft.get(id)||value;return <g key={id} data-object={id}><AnnotationShape value={a} doc={doc}/></g>;})}{draft&&draft.page===n&&<AnnotationShape value={draft} doc={doc}/>} {manipulating&&marquee?.page===n&&<path className="selection-marquee" d={marquee.points.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' ')+' Z'} fill="#1b776922" fillRule="evenodd" stroke="#1b7769" strokeWidth={1/zoom} strokeDasharray={`${5/zoom} ${3/zoom}`} pointerEvents="none"/>}
             {manipulating&&!textDraft&&<SelectionControls selection={selection.filter(o=>o.value.page===n).map(o=>({...o,value:groupDraft.get(o.id)||o.value}))} zoom={zoom} matrix={v.matrix}/>}
@@ -350,7 +350,7 @@ export function Editor({doc,onBack,onEditBatch,onError,onExport,status}:Props) {
  {tool==='erase'&&hover?.page===n&&<circle className="eraser-cursor" cx={hover.point.x} cy={hover.point.y} r={eraserSize/2} fill="#ffffff33" stroke="#245cba" strokeWidth={1/zoom} pointerEvents="none"/>}</g>
         </svg>
         {textDraft?.value.page===n&&<InlineText draft={textDraft} matrix={v.matrix} busy={working} onComposition={value=>{composing.current=value;}} onChange={text=>updateText({...textRef.current!,value:{...textRef.current!.value,text},error:undefined})} onFinish={()=>void finishText()} onCancel={()=>{if(!workingRef.current)updateText(undefined);}}/>}
-      </ReaderPage>;})}{loading&&<p role="status">正在準備連續頁面…</p>}
+      </ReaderPage>;})}{loading&&<p role="status">正在準備連續頁面…</p>}{loadError&&<div role="alert">文件載入失敗：{loadError}<Button onClick={()=>setLoadAttempt(v=>v+1)}>重試載入文件</Button></div>}
     </div></div>
 
     {!!selection.length&&<Button className="clear-selection" disabled={working} onClick={()=>confirmAction(clearSelection)}>取消選取（{selection.length}）</Button>}

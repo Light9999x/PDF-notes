@@ -4,7 +4,7 @@
 
 **[開啟 PDFnote](https://light9999x.github.io/PDF-notes/)** · [詳細操作與本機安裝](app/README.md) · [回報問題](https://github.com/Light9999x/PDF-notes/issues)
 
-目前原始碼版本 **0.10.0，測試中**；本輪尚未部署到上方網站。透過瀏覽器使用，也能安裝成獨立視窗的 App（PWA）；目前沒有 APK 或 EXE 安裝檔。使用本機筆記功能不需要 Google 帳號。
+目前原始碼版本 **0.11.0，測試中**。透過瀏覽器使用，也能安裝成獨立視窗的 App（PWA）；目前沒有 APK 或 EXE 安裝檔。使用本機筆記功能不需要 Google 帳號。
 
 ## 第一次使用：照這五步開始
 
@@ -44,7 +44,7 @@
 | 移動、縮放、旋轉 | 選「選取」，點物件或圈選，拖選取框內任何位置移動、拖邊框縮放、拖圓形控制點旋轉。 |
 | 閱讀與搜尋 | 選「頁面」工具調整適合寬度／整頁；「搜尋」可定位並高光顯示 PDF 文字。 |
 
-手機可雙指縮放文件；左側面板覆蓋閱讀區，箭頭可收合。手機選取後，框外點擊不會重選，請先按「取消選取」。選取多個物件後，用右鍵或長按選單的「建立群組」保存關係；解除後仍保留原物件。
+手機可雙指縮放文件；工具屬性面板從底部展開，箭頭可收合。橫向工具列集中為一列，搜尋、匯出及頁碼等操作放在「目前工具 · 更多」。手機選取後，框外點擊不會重選，請先按「取消選取」。選取多個物件後，用右鍵或長按選單的「建立群組」保存關係；解除後仍保留原物件。
 
 完成文字輸入、按下屬性的「套用變更」或套用去背結果後，等待顯示 **「已存至本機」** 再關閉。詳細操作見 [App 使用指南](app/README.md)。
 
@@ -89,12 +89,12 @@ Google Drive 同步是選用功能，需要先設定自己的 Google OAuth 用�
 
 程式已提供 PDF／圖片匯入、資料夾、四類註記、手動圖片去背、搜尋、離線保存與兩種匯出。手動去背不是 AI 自動去背；新增註記文字匯出成 PDF 後不具有可搜尋文字層。筆記與存檔目前沒有 App 端加密。
 
-0.10.0 已通過 253 項單元測試；本輪未啟動 App 或更新線上部署，檢查結果見 [v010 驗證紀錄](app/docs/VALIDATION-V010.md)。Windows／Galaxy S24+ 的實際安裝操作、觸控筆及真實 Google Drive 雙端同步仍待驗收。詳見 [手機測試指南](app/docs/MOBILE-TESTING.md) 與 [資安檢查報告](app/docs/SECURITY-REVIEW-0081.md)。
+0.11.0 已通過 268 項單元測試；本機驗證未啟動 App，檢查結果見 [v011 驗證紀錄](app/docs/VALIDATION-V011.md)。Windows／Galaxy S24+ 的實際安裝操作、觸控筆及真實 Google Drive 雙端同步仍待驗收。詳見 [手機測試指南](app/docs/MOBILE-TESTING.md) 與 [資安檢查報告](app/docs/SECURITY-REVIEW-0081.md)。
 
 ## 開發與後續規劃
 
 - [App README](app/README.md)：完整操作、本機執行、更新與開發檢查。
 - [架構](app/docs/ARCHITECTURE.md)／[依賴與授權](app/docs/DEPENDENCIES.md)：技術資料。
-- [v010 設計與採用預設](app/docs/V010-DESIGN.md)／[驗證紀錄](app/docs/VALIDATION-V010.md)：已實作功能與待驗收項目。
+- [v011 設計與採用預設](app/docs/V011-DESIGN.md)／[驗證紀錄](app/docs/VALIDATION-V011.md)：已實作功能與待驗收項目。
 
 `prompts/` 與根目錄 `AGENTS.md` 僅保留於本機，不納入 Git 追蹤或發行包；既有 Git 歷史仍保留。

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { DRAG_SLOP, LONG_PRESS_MS, midpoint, nearestPage, pinchZoom } from '../core/document-gesture';
+import { DRAG_SLOP, LONG_PRESS_MS, midpoint, nearestPage, pinchSpacing, pinchZoom } from '../core/document-gesture';
 import type { Point } from '../core/model';
 export type PinchAnchor={page:number;x:number;y:number;client:Point};
 type Options={zoom:number;tool:string;read:boolean;disabled:boolean;cancel:()=>void;onZoom:(zoom:number,anchor:PinchAnchor)=>void;menu:(point:Point,touch:boolean,probe?:boolean)=>boolean;onActivity:()=>void};
@@ -12,10 +12,10 @@ export function useDocumentGestures(root:{current:HTMLDivElement|null},options:O
     const node=root.current;if(!node)return;
     const touches=new Map<number,Point>();let blocked=false,consumed=false,suppressUntil=0,timer:ReturnType<typeof setTimeout>|undefined;
     let single:{id:number;start:Point;last:Point;panning:boolean}|undefined;
-    let pinch:{zoom:number;distance:number;center:Point;scale:number;anchor:PinchAnchor;origin:Point}|undefined;
+    let pinch:{zoom:number;distance:number;center:Point;scale:number;anchor:PinchAnchor;origin:Point;gap:number;index:number;horizontal:boolean}|undefined;
     const stack=()=>node.querySelector<HTMLElement>('.page-stack');
     const stopTimer=()=>{clearTimeout(timer);timer=undefined;};
-    const clearPreview=()=>{const el=stack();if(el){el.style.transform='';el.style.transformOrigin='';el.style.willChange='';}};
+    const clearPreview=()=>{const el=stack();if(el){el.style.transform='';el.style.transformOrigin='';el.style.willChange='';el.style.gap='';}};
     const cancel=()=>{stopTimer();clearPreview();pinch=undefined;single=undefined;blocked=touches.size>0;active.current=false;latest.current.cancel();};reset.current=cancel;
     const ignored=(e:PointerEvent)=>e.target instanceof Element&&!!e.target.closest('input,textarea,button,select,[contenteditable],.floating-menu');
     const stop=(e:PointerEvent)=>{e.preventDefault();e.stopImmediatePropagation();};
@@ -28,7 +28,7 @@ export function useDocumentGestures(root:{current:HTMLDivElement|null},options:O
         const [a,b]=[...touches.values()],center=midpoint(a,b),el=stack();
         const paper=nearestPage([...node.querySelectorAll<HTMLElement>('.paper')].map(el=>({el,...rect(el)})),center);if(!el||!paper){blocked=true;return;}
         const r=el.getBoundingClientRect();const anchor={page:Number(paper.el.dataset.page),x:(center.x-paper.left)/paper.width,y:(center.y-paper.top)/paper.height,client:center};
-        pinch={zoom:latest.current.zoom,distance:Math.hypot(a.x-b.x,a.y-b.y),center,scale:1,anchor,origin:{x:center.x-r.left,y:center.y-r.top}};
+        pinch={zoom:latest.current.zoom,distance:Math.hypot(a.x-b.x,a.y-b.y),center,scale:1,anchor,origin:{x:center.x-r.left,y:center.y-r.top},gap:parseFloat(getComputedStyle(el).gap)||0,index:[...node.querySelectorAll('.paper')].indexOf(paper.el),horizontal:getComputedStyle(el).flexDirection==='row'};
         el.style.transformOrigin=`${pinch.origin.x}px ${pinch.origin.y}px`;el.style.willChange='transform';active.current=true;
         // Capture only after the second contact; one-finger native text menus
         // remain available on the PDF text layer in reading/page mode.
@@ -43,7 +43,7 @@ export function useDocumentGestures(root:{current:HTMLDivElement|null},options:O
       if(!touches.has(e.pointerId))return;const p={x:e.clientX,y:e.clientY};touches.set(e.pointerId,p);
       if(blocked||consumed){stop(e);return;}
       if(pinch){stop(e);const [a,b]=[...touches.values()];if(!a||!b)return;const center=midpoint(a,b);pinch.scale=pinchZoom(pinch.zoom,pinch.distance,a,b)/pinch.zoom;pinch.anchor.client=center;
-        const el=stack();if(el)el.style.transform=`translate(${center.x-pinch.center.x}px,${center.y-pinch.center.y}px) scale(${pinch.scale})`;return;}
+        const el=stack();if(el){const spacing=pinchSpacing(pinch.gap,pinch.scale,pinch.index,pinch.horizontal);el.style.gap=spacing.gap+'px';el.style.transform=`translate(${center.x-pinch.center.x+spacing.x}px,${center.y-pinch.center.y+spacing.y}px) scale(${pinch.scale})`;}return;}
       if(single?.id===e.pointerId){const distance=Math.hypot(p.x-single.start.x,p.y-single.start.y);if(distance>=DRAG_SLOP)stopTimer();
         if(latest.current.read&&!latest.current.disabled&&(distance>=DRAG_SLOP||single.panning)&&window.getSelection()?.isCollapsed!==false){stop(e);single.panning=true;node.scrollLeft-=p.x-single.last.x;node.scrollTop-=p.y-single.last.y;}
         single.last=p;

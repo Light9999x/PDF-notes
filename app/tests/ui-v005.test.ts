@@ -6,7 +6,7 @@ import postcss from 'postcss';
 import { editorKeyAction } from '../src/core/ui-policy';
 import { activateDialog, dismissDialog } from '../src/core/dialog';
 import { LibraryActions } from '../src/components/LibraryActions';
-import { EditorToolbar } from '../src/components/EditorToolbar';
+import { EditorToolbar, ToolOptions } from '../src/components/EditorToolbar';
 import { Button, Dialog, Field } from '../src/components/ui';
 
 describe('editor keyboard precedence',()=>{
@@ -69,7 +69,9 @@ describe('reachable actions and contextual controls, rendered without starting t
   });
   const base:ComponentProps<typeof EditorToolbar>={name:'長文件名稱'.repeat(40),status:'已存至本機 · 尚未同步',tool:'read',onTool:noop,color:'#245cba',onColor:noop,weight:8,onWeight:noop,eraserSize:40,onEraser:noop,onBack:noop,onExport:noop,onImage:noop,ready:true,working:false,canUndo:true,canRedo:true,onUndo:noop,onRedo:noop,selectionMode:'box',onSelectionMode:noop,dirty:false,page:1,pages:3,onPage:noop,zoom:1,onZoom:noop,onFit:noop,onFitPage:noop,zoomMode:'manual',onRotate:noop,layout:'vertical',onLayout:noop,query:'',onQuery:noop,onSearch:noop};
   it.each(['page','read','select','pen','highlight','text','erase','image'] as const)('%s exposes only its relevant settings but always keeps export and history',tool=>{
-    const html=renderToStaticMarkup(createElement(EditorToolbar,{...base,tool}));
+    const toolbar=renderToStaticMarkup(createElement(EditorToolbar,{...base,tool}));
+    expect(toolbar).not.toContain('目前工具設定');
+    const html=toolbar+renderToStaticMarkup(createElement(ToolOptions,{...base,tool}));
     expect(html.includes('class="tool-options" aria-label="目前工具設定"')).toBe(!['page','read','image'].includes(tool));
     const imageButton=html.match(/<button[^>]*aria-label="插入圖片"[^>]*>/)?.[0];expect(imageButton).toContain(`aria-pressed="${tool==='image'}"`);
     expect(html.includes('aria-label="橡皮擦直徑"')).toBe(tool==='erase');
@@ -78,6 +80,11 @@ describe('reachable actions and contextual controls, rendered without starting t
     expect(html.includes('aria-label="選取模式"')).toBe(tool==='select');
     for(const label of ['匯出文件','復原','重做','閱讀'])expect(html).toContain(`aria-label="${label}"`);
     expect(html).toContain('hidden="" inert="" aria-hidden="true"><form id="pdf-search"');expect(html).toContain('aria-label="搜尋 PDF"');
+  });
+  it('keeps the compact landscape tool and save failure identifiable with a discoverable action menu',()=>{
+    const html=renderToStaticMarkup(createElement(EditorToolbar,{...base,landscape:true,tool:'pen',status:'儲存失敗'}));
+    expect(html).toContain('aria-label="返回文件庫"');expect(html).toContain('aria-label="文件與閱讀操作"');expect(html).toContain('畫筆 · 更多');expect(html).toContain('role="alert"');expect(html).not.toContain('reader-header');
+    for(const label of ['頁面','閱讀','選取','畫筆','螢光筆','文字','橡皮擦','插入圖片'])expect(html).toContain(`aria-label="${label}"`);
   });
   it('supplies a titled dialog, blocks dismissal for protected recovery, and makes busy buttons non-submitting',()=>{
     const html=renderToStaticMarkup(createElement(Dialog,{title:'儲存失敗',alert:true,dismissible:false,onClose:noop,portal:false,children:createElement(Field,{label:'名稱',children:createElement('input')})}));
