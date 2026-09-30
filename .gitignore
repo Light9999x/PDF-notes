@@ -19,3 +19,7 @@ playwright-report/
 *.log
 .DS_Store
 Thumbs.db
+
+# Local planning and workspace instructions
+/prompts/
+/AGENTS.md

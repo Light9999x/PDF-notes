@@ -95,6 +95,6 @@ Google Drive 同步是選用功能，需要先設定自己的 Google OAuth 用�
 
 - [App README](app/README.md)：完整操作、本機執行、更新與開發檢查。
 - [架構](app/docs/ARCHITECTURE.md)／[依賴與授權](app/docs/DEPENDENCIES.md)：技術資料。
-- [Prompt 與 changelog](prompts/CHANGELOG.md)：歷次規劃及設計／驗收文件入口；規劃不等於已實作。
-- [v010 最新規劃](prompts/v010_手機閱讀手勢版面與物件群組_開發Prompt.md)：手機文件縮放、面板與工具列、選取手勢、整體動畫、群組及物件操作選單；已完成本輪程式更動，雙指與動畫仍待瀏覽器／真機驗收。
-- [v009 規劃](prompts/v009_選單面板動畫與物件圖層_開發Prompt.md)：圖片庫精簡、選單覆蓋、面板背景、物件前後圖層與動畫已實作；瀏覽器／真機待驗收。
+- [v010 設計與採用預設](app/docs/V010-DESIGN.md)／[驗證紀錄](app/docs/VALIDATION-V010.md)：已實作功能與待驗收項目。
+
+`prompts/` 與根目錄 `AGENTS.md` 僅保留於本機，不納入 Git 追蹤或發行包；既有 Git 歷史仍保留。

@@ -130,7 +130,7 @@ git clone https://github.com/Light9999x/PDF-notes.git
 cd PDF-notes
 ```
 
-也可在 GitHub 按「Code」→「Download ZIP」，解壓縮後於專案根目錄開啟 PowerShell。**根目錄是看得到 `app/`、`prompts/` 及 README 的位置**；已經有專案的人不必重新下載。
+也可在 GitHub 按「Code」→「Download ZIP」，解壓縮後於專案根目錄開啟 PowerShell。**根目錄是看得到 `app/` 及 README 的位置**；已經有專案的人不必重新下載。
 
 ### 2. 安裝依賴並建置
 
@@ -224,6 +224,6 @@ GitHub Actions 已設定在 main 的 App 變更時檢查並部署 `app/dist` 至
 
 - [手機測試步驟](docs/MOBILE-TESTING.md)／[資安檢查與限制](docs/SECURITY-REVIEW-0081.md)
 - [架構](docs/ARCHITECTURE.md)／[依賴與授權](docs/DEPENDENCIES.md)
-- [Prompt changelog](../prompts/CHANGELOG.md)：集中連結歷次規劃、設計及驗收紀錄。
+- [v010 設計](docs/V010-DESIGN.md)／[v010 驗證](docs/VALIDATION-V010.md)：實作與測試狀態。
 
-程式放在 `app/`，需求規劃放在 `prompts/`。v010 十項已完成本輪程式更動，採用預設、資料模型與相容性見 [設計文件](docs/V010-DESIGN.md)；動畫影格、實際觸控與跨裝置驗收尚待執行。
+程式放在 `app/`。`prompts/` 與根目錄 `AGENTS.md` 為本機文件，不追蹤、不隨發行包提供；新 checkout 不需要這些檔案即可建置與封裝。v010 十項已完成本輪程式更動，採用預設、資料模型與相容性見 [設計文件](docs/V010-DESIGN.md)；動畫影格、實際觸控與跨裝置驗收尚待執行。
